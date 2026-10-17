@@ -153,7 +153,7 @@
     var sw = byId('secretwars'); if (t && sw) h += '<path class="dm-edge future" d="M' + (t.x + t.r) + ',' + t.y + ' Q' + ((t.x + sw.x) / 2) + ',' + sw.y + ' ' + (sw.x - sw.r) + ',' + sw.y + '" fill="none"/>';
     data.nodes.forEach(function (n) {
       var cls = 'dm-node ' + n.tier + (n.seen ? ' seen' : '') + (n.queued ? ' queued' : '') + (selected === n.id ? ' on' : '') + (passes(n) ? '' : ' off') + (n.crowded ? ' crowded' : '');
-      h += '<g class="' + cls + '" data-node="' + n.id + '" transform="translate(' + n.x + ',' + n.y + ')"><g class="dm-s">';
+      h += '<g class="' + cls + '" data-node="' + n.id + '" transform="translate(' + n.x + ',' + n.y + ')"><g class="dm-s" transform="scale(' + curNs.toFixed(4) + ')">';
       if (n.tier === 'target') h += '<circle r="' + (n.r + 26) + '" class="dm-halo"/><circle r="' + (n.r + 12) + '" class="dm-halo2"/>';
       if (n.queued) h += '<circle r="' + (n.r + 11) + '" class="dm-qring"/>';
       h += '<circle r="' + (n.r + 4) + '" class="dm-ring"/><circle r="' + (n.r - 3) + '" fill="#1b232c"/>';
@@ -315,13 +315,20 @@
   function stage() { return root.querySelector('.dm-stage'); }
   function svgEl() { return root.querySelector('.dmap-svg'); }
   function stageRect() { return stage().getBoundingClientRect(); }
-  function applyView() {
+  // The SVG is drawn (1 + 2·OV)× the stage. While a finger gesture or a zoom animation runs, the already-rasterised map is
+  // only slid/scaled with a compositor transform (no re-layout, so nothing flickers); the viewBox is re-rendered once when
+  // the gesture ends — or mid-gesture if it runs past the overscan or the raster would get too blurry.
+  var OV = 0.5, base = null, curNs = 1;
+  function applyView() {  // commit: crisp render of the current view
     var s = svgEl(); if (!s) return;
     if (!stage()) return;
-    var r = stageRect(), k = view.k;
-    s.setAttribute('viewBox', (-view.x / k) + ' ' + (-view.y / k) + ' ' + (r.width / k) + ' ' + (r.height / k));
+    var r = stageRect(), k = view.k, ow = r.width * OV, oh = r.height * OV;
+    s.setAttribute('viewBox', (-(view.x + ow) / k) + ' ' + (-(view.y + oh) / k) + ' ' + ((r.width + 2 * ow) / k) + ' ' + ((r.height + 2 * oh) / k));
+    s.style.transformOrigin = ow + 'px ' + oh + 'px'; s.style.transform = '';
+    base = { x: view.x, y: view.y, k: k };
     s.style.setProperty('--inv', (1 / k).toFixed(4));
     var ns = Math.min(1.3, Math.pow(k, -0.62) * (r.width < 700 ? 1.15 : 1)), tf = 'scale(' + ns.toFixed(4) + ')';
+    curNs = ns;
     if (s.__ns !== tf) { s.__ns = tf; var gs = s.querySelectorAll('.dm-s'); for (var i = 0; i < gs.length; i++) gs[i].setAttribute('transform', tf); }
     s.__nsNum = ns; scheduleLabels(ns);
     var cls = 'dmap-svg ' + (k < 0.5 ? 'z0' : k < 1.1 ? 'z1' : k < 2 ? 'z2' : 'z3') + (selected ? ' has-sel' : '');
@@ -330,13 +337,20 @@
     st.style.touchAction = zoomed ? 'none' : 'pan-y';
     st.classList.toggle('zoomed', zoomed);
   }
+  function applyGesture() {  // cheap per-frame step: transform the committed raster instead of re-rendering it
+    var s = svgEl(); if (!s || !base) { applyView(); return; }
+    var sc = view.k / base.k, dx = view.x - base.x * sc, dy = view.y - base.y * sc, r = stageRect();
+    if (sc < 0.6 || sc > 2 || Math.abs(dx) > r.width * OV * 0.9 || Math.abs(dy) > r.height * OV * 0.9) { applyView(); return; }
+    s.style.transform = 'translate(' + dx.toFixed(2) + 'px,' + dy.toFixed(2) + 'px) scale(' + sc.toFixed(4) + ')';
+  }
   function animateTo(target) {
     if (anim) cancelAnimationFrame(anim);
+    if (!base) applyView();
     var from = { x: view.x, y: view.y, k: view.k }, t0 = performance.now(), dur = 380;
     var step = function (now) {
       var p = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - p, 3);
       view.k = from.k + (target.k - from.k) * e; view.x = from.x + (target.x - from.x) * e; view.y = from.y + (target.y - from.y) * e;
-      applyView(); if (p < 1) anim = requestAnimationFrame(step); else anim = null;
+      if (p < 1) { applyGesture(); anim = requestAnimationFrame(step); } else { anim = null; applyView(); }
     };
     anim = requestAnimationFrame(step);
   }
@@ -422,21 +436,28 @@
       var d0 = Math.hypot(pinch.bx - pinch.ax, pinch.by - pinch.ay), d1 = Math.hypot(b.x - a.x, b.y - a.y);
       var k2 = Math.max(fitTarget().k, Math.min(6, pinch.k0 * (d1 / (d0 || 1))));
       var cx = (a.x + b.x) / 2 - pinch.r.left, cy = (a.y + b.y) / 2 - pinch.r.top, c0x = (pinch.ax + pinch.bx) / 2 - pinch.r.left, c0y = (pinch.ay + pinch.by) / 2 - pinch.r.top;
-      view = clampView({ k: k2, x: cx - (c0x - pinch.x0) * (k2 / pinch.k0), y: cy - (c0y - pinch.y0) * (k2 / pinch.k0) }); applyView(); return;
+      view = clampView({ k: k2, x: cx - (c0x - pinch.x0) * (k2 / pinch.k0), y: cy - (c0y - pinch.y0) * (k2 / pinch.k0) }); applyGesture(); return;
     }
     if (!dragging || ev.pointerId !== dragging.id) return;
     var dx = ev.clientX - dragging.sx, dy = ev.clientY - dragging.sy;
     if (Math.abs(dx) + Math.abs(dy) > 4) dragging.moved = true;
-    if (dragging.moved) { view = clampView({ k: view.k, x: dragging.vx + dx, y: dragging.vy + dy }); applyView(); dismissCoach(); }
+    if (dragging.moved) { view = clampView({ k: view.k, x: dragging.vx + dx, y: dragging.vy + dy }); applyGesture(); dismissCoach(); }
   }
   function onPointerUp(ev) {
     delete pts[ev.pointerId];
-    if (pinch && (ev.pointerId === pinch.a || ev.pointerId === pinch.b)) { pinch = null; dragging = null; return; }
+    if (pinch && (ev.pointerId === pinch.a || ev.pointerId === pinch.b)) { pinch = null; dragging = null; applyView(); return; }
     if (!dragging || ev.pointerId !== dragging.id) return;
     if (!dragging.moved) { if (dragging.target) select(dragging.target.dataset.node); else if (!ev.target.closest('.dm-side')) select(null); }
+    else applyView();  // the drag ends: one crisp render
     dragging = null;
   }
-  function onPointerCancel(ev) { delete pts[ev.pointerId]; if (pinch && (ev.pointerId === pinch.a || ev.pointerId === pinch.b)) pinch = null; if (dragging && ev.pointerId === dragging.id) dragging = null; }
+  function onPointerCancel(ev) {
+    delete pts[ev.pointerId];
+    var moved = !!pinch || (dragging && dragging.moved);
+    if (pinch && (ev.pointerId === pinch.a || ev.pointerId === pinch.b)) pinch = null;
+    if (dragging && ev.pointerId === dragging.id) dragging = null;
+    if (moved) applyView();
+  }
   function onWheel(ev) {
     var st = stage(); if (!st) return; ev.preventDefault();
     var r = stageRect(); zoomAt(Math.exp(-ev.deltaY * 0.0016), ev.clientX - r.left, ev.clientY - r.top);
