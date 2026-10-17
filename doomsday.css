@@ -34,6 +34,9 @@
 .dm-label{fill:#eef2f6;font-size:14px;font-weight:700;paint-order:stroke;stroke:#070a0f;stroke-width:4px;stroke-linejoin:round}
 .dm-node.essential .dm-label,.dm-node.target .dm-label{font-size:16px;fill:#ffe28a}
 .dm-sub{fill:#8a95a3;font-size:11px;paint-order:stroke;stroke:#070a0f;stroke-width:3px}
+.dm-stagewrap{position:relative}
+.dm-tools{position:absolute;inset:0;pointer-events:none;z-index:3}
+.dm-tools .dm-ctl{pointer-events:auto}
 .dm-ctl{position:absolute;right:10px;top:10px;display:flex;flex-direction:column;gap:6px}
 .dm-ctl button{width:42px;height:42px;border-radius:12px;border:1px solid var(--line-strong);background:rgba(19,26,34,.85);color:var(--text);font-size:1.2rem;cursor:pointer;backdrop-filter:blur(8px)}
 .dm-side{position:absolute;left:0;right:0;bottom:0;max-height:62%;overflow:auto;transform:translateY(102%);transition:transform .28s cubic-bezier(.2,.8,.2,1);z-index:5}
@@ -92,7 +95,7 @@
 .dm-node.queued .dm-check-t{fill:#1a1300}
 .dm-node.seen .dm-check-t{fill:#fff}
 .dm-node.off,.dm-edge.off{display:none}
-.z0 .dm-node.background text,.z0 .dm-sub{display:none}
+.z0 .dm-node.background text,.z0 .dm-sub{opacity:0;pointer-events:none}
 .z2 .dm-edge.background,.z3 .dm-edge.background{opacity:.22}
 .z3 .dm-edge.recommended{opacity:.6}
 .has-sel .dm-edge:not(.lit){opacity:.12}
@@ -132,8 +135,8 @@
 .dm-side{display:none}
 
 .dm-s{transform-box:fill-box}
-.dm-node.crowded text{display:none}
-.z0 .dm-node.recommended text{display:none}
+.dm-node.crowded text{opacity:0;pointer-events:none}
+.z0 .dm-node.recommended text{opacity:0;pointer-events:none}
 
 /* full catalogue: chronology chains, catalogue tier, lane chips */
 .dm-chain{stroke:#fff;stroke-opacity:.13;stroke-dasharray:3 7;stroke-width:calc(1.3px * var(--inv))}
@@ -141,8 +144,8 @@
 .dm-node.catalog .dm-label{fill:#b8c2cc;font-size:13px}
 .dm-node.catalog .dm-sub{font-size:10.5px}
 .dm-lg.catalog i{background:#4b5563}
-.z0 .dm-node.catalog text,.z1 .dm-node.catalog text{display:none}
-.z0 .dm-node.background text{display:none}
+.z0 .dm-node.catalog text,.z1 .dm-node.catalog text{opacity:0;pointer-events:none}
+.z0 .dm-node.background text{opacity:0;pointer-events:none}
 .dm-filters.lanes .fchip{min-height:34px;font-size:.78rem;padding:0 11px;background:var(--surface)}
 .dm-filters.lanes .fchip.on{background:linear-gradient(180deg,#8fb8ff,#3b7ddd);color:#06152a}
 details.dm-cat summary{list-style:none;cursor:pointer}
@@ -161,7 +164,7 @@ details.dm-cat[open] summary::after{content:" ▾"}
 
 .dm-edge.background{opacity:.35}
 .z0 .dm-edge.background{opacity:.18}
-.z0 .dm-lane-note{display:none}
+.z0 .dm-lane-note{opacity:0}
 .dm-lane{font-size:calc(14px * var(--inv))}
 
 /* ---- filter motion: chips pop, nodes sweep in toward Doomsday, hidden ones shrink away ---- */
@@ -196,9 +199,9 @@ details.dm-cat[open] summary::after{content:" ▾"}
 @media(max-width:520px){.dm-reset{padding:0 13px;font-size:.84rem}}
 
 /* ---- phones: map front and centre, page scrolls past it, never lost in black space ---- */
-.dm-fitpill{display:none;position:absolute;right:10px;top:10px;z-index:4;transform:translate(0,-8px);opacity:0;pointer-events:none;min-height:36px;padding:0 14px;border-radius:999px;border:1px solid rgba(255,204,51,.55);background:rgba(19,26,34,.88);color:var(--text);font-weight:700;font-size:.82rem;backdrop-filter:blur(8px);white-space:nowrap;transition:opacity .2s,transform .2s;cursor:pointer}
-.dm-stage.zoomed .dm-fitpill{opacity:1;transform:none;pointer-events:auto}
-.dm-coach{position:absolute;left:50%;bottom:64px;z-index:4;transform:translateX(-50%);padding:8px 12px;border-radius:999px;background:rgba(19,26,34,.9);border:1px solid var(--line-strong);color:var(--text);font-size:.8rem;font-weight:600;pointer-events:none;animation:dmCoach 1.6s ease-in-out infinite;transition:opacity .35s}
+.dm-fitpill{display:none;position:absolute;left:50%;top:10px;z-index:4;transform:translate(-50%,-8px);opacity:0;pointer-events:none;min-height:36px;padding:0 14px;border-radius:999px;border:1px solid rgba(255,204,51,.55);background:rgba(19,26,34,.88);color:var(--text);font-weight:700;font-size:.82rem;backdrop-filter:blur(8px);white-space:nowrap;transition:opacity .2s,transform .2s;cursor:pointer}
+.dm-stage.zoomed .dm-fitpill{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+.dm-coach{position:absolute;left:50%;bottom:14px;z-index:4;transform:translateX(-50%);padding:8px 12px;border-radius:999px;background:rgba(19,26,34,.9);border:1px solid var(--line-strong);color:var(--text);font-size:.8rem;font-weight:600;pointer-events:none;animation:dmCoach 1.6s ease-in-out infinite;transition:opacity .35s}
 .dm-coach.gone{opacity:0}
 @keyframes dmCoach{0%,100%{transform:translate(-50%,0)}50%{transform:translate(calc(-50% - 8px),0)}}
 @media(max-width:759px){
@@ -210,12 +213,19 @@ details.dm-cat[open] summary::after{content:" ▾"}
   .dm-bar{order:1;margin:0 0 8px;gap:6px}
   .dm-filters .fchip{min-height:36px;font-size:.82rem}
   .dm-filters.lanes .fchip{min-height:32px}
-  .dm-stage{order:2;height:62vh;border-radius:16px}
+  .dm-stagewrap{order:2}
+  .dm-stage{height:62vh;border-radius:16px}
   .dm-listwrap{order:2}
   .dm-legend{order:3;margin:10px 0 0}
   .dm-note{order:4}
   .dm-fitpill{display:inline-flex}
-  .dm-ctl{top:auto;bottom:10px;flex-direction:row}
+  .dm-tools{position:static;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 2px 0}
+  .dm-ctl{position:static;flex-direction:row;gap:8px}
   .dm-ctl button{width:40px;height:40px}
-  .dm-count{bottom:auto;top:10px;left:10px}
+  .dm-ctl [data-dm-fit]{display:none}
+  .dm-count{position:static}
 }
+
+/* ---- zoom: nothing snaps. Labels, year ticks and lane notes fade; label placement waits for the gesture to settle ---- */
+.dm-node text,.dm-lane-note,.dm-year{transition:opacity .28s}
+.z0 .dm-year.alt{opacity:0}

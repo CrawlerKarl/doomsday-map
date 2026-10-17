@@ -133,7 +133,7 @@
     h += '</defs>';
     h += '<rect x="-4000" y="-4000" width="12000" height="12000" fill="#070a0f"/><rect width="' + W + '" height="' + H + '" fill="url(#bg)"/>';
     var seed = 7; for (var i = 0; i < 160; i++) { seed = (seed * 9301 + 49297) % 233280; var sx = seed / 233280 * W; seed = (seed * 9301 + 49297) % 233280; var sy = seed / 233280 * H; seed = (seed * 9301 + 49297) % 233280; h += '<circle cx="' + sx.toFixed(0) + '" cy="' + sy.toFixed(0) + '" r="' + (0.6 + seed / 233280 * 1.6).toFixed(1) + '" fill="#fff" opacity="' + (0.15 + seed / 233280 * 0.5).toFixed(2) + '"/>'; }
-    for (var y = 1998; y <= 2027; y += (y < 2008 ? 5 : 1)) { var ax = xOf(y + '-01-01'); h += '<line x1="' + ax + '" y1="' + (TOP + 30) + '" x2="' + ax + '" y2="' + (H - 40) + '" class="dm-grid"/><text x="' + ax + '" y="' + (H - 18) + '" class="dm-year" text-anchor="middle">' + y + '</text>'; }
+    for (var y = 1998; y <= 2027; y += (y < 2008 ? 5 : 1)) { var ax = xOf(y + '-01-01'); h += '<line x1="' + ax + '" y1="' + (TOP + 30) + '" x2="' + ax + '" y2="' + (H - 40) + '" class="dm-grid"/><text x="' + ax + '" y="' + (H - 18) + '" class="dm-year' + (y >= 2009 && y % 2 ? ' alt' : '') + '" text-anchor="middle">' + y + '</text>'; }
     data.lanes.forEach(function (l) { var ly = laneY[l.id]; h += '<line x1="' + LEFT + '" y1="' + ly + '" x2="' + (W - RIGHT) + '" y2="' + ly + '" class="dm-lanel"/><text x="' + (LEFT - 14) + '" y="' + (ly - 6) + '" class="dm-lane" text-anchor="end">' + esc(LANE_SHORT[l.id] || l.label) + '</text><text x="' + (LEFT - 14) + '" y="' + (ly + 14) + '" class="dm-lane-note" text-anchor="end">' + esc(l.note) + '</text>'; });
     // edges, background first so the important ones draw on top
     data.lanes.forEach(function (l) {  // chronology within each lane for the rest of the catalogue
@@ -245,7 +245,13 @@
   }
 
   // ---- labels: four candidate spots per title, chosen for the current zoom ----------
-  var lastNs = -1;
+  var lastNs = -1, labelTimer = null;
+  function scheduleLabels(ns) {  // first paint places at once; mid-gesture changes wait until the zoom settles, so labels never flicker
+    if (lastNs < 0) { clearTimeout(labelTimer); placeLabels(ns, true); return; }
+    if (Math.abs(ns - lastNs) < 0.03) return;
+    clearTimeout(labelTimer);
+    labelTimer = setTimeout(function () { var s = svgEl(); if (s && s.__nsNum != null) placeLabels(s.__nsNum, true); }, 160);
+  }
   function placeLabels(ns, force) {
     if (!force && Math.abs(ns - lastNs) < 0.03) return;
     lastNs = ns;
@@ -301,8 +307,9 @@
     s.style.setProperty('--inv', (1 / k).toFixed(4));
     var ns = Math.min(1.3, Math.pow(k, -0.62) * (r.width < 700 ? 1.15 : 1)), tf = 'scale(' + ns.toFixed(4) + ')';
     if (s.__ns !== tf) { s.__ns = tf; var gs = s.querySelectorAll('.dm-s'); for (var i = 0; i < gs.length; i++) gs[i].setAttribute('transform', tf); }
-    placeLabels(ns, false);
-    s.setAttribute('class', 'dmap-svg ' + (k < 0.5 ? 'z0' : k < 1.1 ? 'z1' : k < 2 ? 'z2' : 'z3') + (selected ? ' has-sel' : ''));
+    s.__nsNum = ns; scheduleLabels(ns);
+    var cls = 'dmap-svg ' + (k < 0.5 ? 'z0' : k < 1.1 ? 'z1' : k < 2 ? 'z2' : 'z3') + (selected ? ' has-sel' : '');
+    if (s.getAttribute('class') !== cls) s.setAttribute('class', cls);
     var st = stage(), zoomed = !atFit();
     st.style.touchAction = zoomed ? 'none' : 'pan-y';
     st.classList.toggle('zoomed', zoomed);
@@ -351,9 +358,10 @@
   function sizeStage() {  // on phones the map takes the viewport below the controls, so it is fully visible without scrolling
     var st = stage(); if (!st) return;
     if (!PHONE()) { if (st.style.height) { st.style.height = ''; } return; }
-    var bar = root.querySelector('.dm-bar'), vh = window.innerHeight;
+    var bar = root.querySelector('.dm-bar'), tools = root.querySelector('.dm-tools'), vh = window.innerHeight;
     var above = STATIC ? st.getBoundingClientRect().top + window.scrollY : stickyOffset() + (bar ? st.getBoundingClientRect().top - bar.getBoundingClientRect().top : 0);
-    var h = Math.max(360, Math.min(760, vh - above - 14));
+    var below = tools ? tools.getBoundingClientRect().height : 0;
+    var h = Math.max(340, Math.min(760, vh - above - below - 10));
     st.style.height = h + 'px';
   }
   function bringIntoView() {  // tracker only: when the Doomsday tab opens on a phone, park the controls under the tab bar
@@ -556,8 +564,8 @@
 
   function render(fitView, entrance) {
     var body = mode === 'map'
-      ? '<div class="dm-stage" data-dm-stage="1">' + svg() +
-        '<div class="dm-ctl"><button data-dm-zoom="1" aria-label="Zoom in">+</button><button data-dm-zoom="-1" aria-label="Zoom out">−</button><button data-dm-fit="1" aria-label="Fit">⤢</button><button data-dm-goto="doomsday" title="Jump to Doomsday">🎯</button></div><div class="dm-count" aria-live="polite"></div><button class="dm-fitpill" data-dm-fit="1">⤢ Show whole map</button>' + coachHtml() + '</div>'
+      ? '<div class="dm-stagewrap"><div class="dm-stage" data-dm-stage="1">' + svg() + '<button class="dm-fitpill" data-dm-fit="1">⤢ Show whole map</button>' + coachHtml() + '</div>' +
+        '<div class="dm-tools"><div class="dm-count" aria-live="polite"></div><div class="dm-ctl"><button data-dm-zoom="1" aria-label="Zoom in">+</button><button data-dm-zoom="-1" aria-label="Zoom out">−</button><button data-dm-fit="1" aria-label="Fit">⤢</button><button data-dm-goto="doomsday" title="Jump to Doomsday">🎯</button></div></div></div>'
       : listHtml();
     root.innerHTML = '<div class="dm-top"><div><h2 class="dm-h">Avengers: Doomsday — prep</h2><p class="muted small">Dec 18, 2026 · ' + (mode === 'map' ? 'drag to pan · pinch, scroll or double-tap to zoom · tap a title' : 'tap a title for why it matters · ✓ seen · ★ queue it for before the movie') + '</p></div>' + stats() + '</div>' +
       '<div class="dm-bar">' + modeHtml() + filtersHtml() + '</div>' + (mode === 'map' ? legend() : '') +
