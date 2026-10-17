@@ -34,21 +34,25 @@
     ironheart: 'Ironheart', ddba: 'Daredevil: Born Again', daredevil: 'Daredevil (2015)' };
   var root = null, data = null, view = { x: 0, y: 0, k: 1 }, dragging = null, pinch = null, selected = null, anim = null;
   var STATIC = !!window.DM_STATIC, DATA_URL = STATIC ? 'doomsday.json' : '/doomsday.json';
-  function localState() { try { return JSON.parse(localStorage.getItem('dm_state') || '{"seen":{},"queue":{}}'); } catch (e) { return { seen: {}, queue: {} }; } }
+  function localState() {
+    var st; try { st = JSON.parse(localStorage.getItem('dm_state') || '{}'); } catch (e) { st = {}; }
+    st.seen = st.seen || {}; st.queue = st.queue || {}; st.hidden = st.hidden || {}; return st;
+  }
   function saveLocalState(st) { try { localStorage.setItem('dm_state', JSON.stringify(st)); } catch (e) {} }
   function applyLocal(j) {
     // the shared site carries no personal marks; each visitor's seen/queue come from their browser
     if (!STATIC) return j;
     var st = localState(), ORDER = { target: 0, essential: 1, recommended: 2, background: 3, catalog: 4, future: 5 };
-    j.nodes.forEach(function (n) { n.seen = !!st.seen[n.id]; n.seen_source = n.seen ? 'you' : ''; n.queued = !!st.queue[n.id]; n.on_your_list = false; n.list_bucket = ''; });
-    var ess = j.nodes.filter(function (n) { return n.tier === 'essential'; });
-    var prep = j.nodes.filter(function (n) { return n.tier === 'essential' || n.tier === 'recommended'; }).sort(function (a, b) { return (ORDER[a.tier] - ORDER[b.tier]) || (a.date || '9999').localeCompare(b.date || '9999'); });
-    var q = j.nodes.filter(function (n) { return n.queued; });
+    j.nodes.forEach(function (n) { n.seen = !!st.seen[n.id]; n.seen_source = n.seen ? 'you' : ''; n.queued = !!st.queue[n.id]; n.hidden = !!st.hidden[n.id] && n.tier !== 'target' && n.tier !== 'future'; n.on_your_list = false; n.list_bucket = ''; });
+    var live = j.nodes.filter(function (n) { return !n.hidden; });
+    var ess = live.filter(function (n) { return n.tier === 'essential'; });
+    var prep = live.filter(function (n) { return n.tier === 'essential' || n.tier === 'recommended'; }).sort(function (a, b) { return (ORDER[a.tier] - ORDER[b.tier]) || (a.date || '9999').localeCompare(b.date || '9999'); });
+    var q = live.filter(function (n) { return n.queued; });
     j.prep_order = prep.map(function (n) { return n.id; }); j.queue_order = q.map(function (n) { return n.id; });
     j.stats = { essential: ess.length, essential_unseen: ess.filter(function (n) { return !n.seen; }).length,
       prep_minutes_left: prep.filter(function (n) { return !n.seen; }).reduce(function (a, n) { return a + (n.runtime || 0); }, 0),
       seen: j.nodes.filter(function (n) { return n.seen && n.tier !== 'target' && n.tier !== 'future'; }).length,
-      queued: q.length, queue_minutes: q.reduce(function (a, n) { return a + (n.runtime || 0); }, 0), total: j.nodes.length };
+      queued: q.length, queue_minutes: q.reduce(function (a, n) { return a + (n.runtime || 0); }, 0), total: j.nodes.length, hidden: j.nodes.length - live.length };
     return j;
   }
   var mode = 'map', filt = { tiers: {}, lanes: {}, hideSeen: false, queuedOnly: false };
@@ -58,6 +62,7 @@
   function tiersOn() { return Object.keys(filt.tiers).filter(function (k) { return filt.tiers[k]; }); }
   function lanesOn() { return Object.keys(filt.lanes || {}).filter(function (k) { return filt.lanes[k]; }); }
   function passes(n) {
+    if (n.hidden) return false;
     if (n.tier === 'target' || n.tier === 'future') return !filt.queuedOnly && !(filt.hideSeen && n.seen) || n.tier === 'target';
     var ts = tiersOn(); if (ts.length && ts.indexOf(n.tier) < 0) return false;
     var ls = lanesOn(); if (ls.length && ls.indexOf(n.lane) < 0) return false;
@@ -198,13 +203,21 @@
     if (n.tier === 'target' || n.tier === 'future') return '';
     return n.seen ? '<span class="dm-seen on">✓ seen</span>' : '<span class="dm-seen">not seen</span>';
   }
-  function listRow(n) {
+  function queuePill(n) {
+    if (!n.queued) return '';
+    return '<span class="dm-tier q">★ ' + (n.seen ? 'rewatch' : 'watch') + ' queued</span>';
+  }
+  function listRow(n, inHidden) {
     var tier = data.tiers[n.tier] || {}, dots = (n.services || []).map(function (s) { return '<i class="' + esc(s.id) + '" title="' + esc(s.label) + '"></i>'; }).join('');
-    return '<div class="dm-row' + (n.seen ? ' seen' : '') + (n.queued ? ' queued' : '') + '" data-dm-rowopen="' + n.id + '">' +
+    var isTarget = n.tier === 'target' || n.tier === 'future';
+    var acts = isTarget ? '' : '<div class="dm-acts">' +
+      '<button class="dm-tgl seen' + (n.seen ? ' on' : '') + '" data-dm-toggle="' + n.id + '" title="' + (n.seen ? 'Seen · tap to mark unseen' : 'Mark as seen') + '"><i>✓</i><span>' + (n.seen ? 'Seen' : 'Seen?') + '</span></button>' +
+      '<button class="dm-tgl star' + (n.queued ? ' on' : '') + '" data-dm-queue="' + n.id + '" title="' + (n.queued ? 'Queued · tap to remove' : (n.seen ? 'Rewatch before Doomsday' : 'Watch before Doomsday')) + '"><i>★</i><span>' + (n.queued ? 'Queued' : (n.seen ? 'Rewatch' : 'Watch')) + '</span></button>' +
+      '<button class="dm-tgl hide' + (n.hidden ? ' on' : '') + '" data-dm-hide="' + n.id + '" title="' + (n.hidden ? 'Show it again' : 'Not interested · hide it') + '"><i>' + (n.hidden ? '↩' : '⊘') + '</i><span>' + (n.hidden ? 'Unhide' : 'Hide') + '</span></button></div>';
+    return '<div class="dm-row' + (n.seen ? ' seen' : '') + (n.queued ? ' queued' : '') + (inHidden ? ' hidden' : '') + '" data-dm-rowopen="' + n.id + '">' +
       (n.poster_url ? '<img src="' + esc(n.poster_url) + '" alt="" loading="lazy">' : '<span class="ph"></span>') +
-      '<div class="t"><div class="tt">' + esc(n.title) + '</div><div class="s"><span class="dm-tier ' + n.tier + '">' + esc(tier.label || n.tier) + '</span>' + seenPill(n) + ' ' + esc(n.year || '') + (n.runtime ? ' · ' + mins(n.runtime) : '') + (n.episodes ? ' · ' + n.episodes + ' ep' : '') + (dots ? ' <span class="sdots">' + dots + '</span>' : '') + '</div></div>' +
-      (n.tier === 'target' || n.tier === 'future' ? '' : '<button class="dm-tgl' + (n.seen ? ' on' : '') + '" data-dm-toggle="' + n.id + '" title="Seen it">✓</button><button class="dm-tgl star' + (n.queued ? ' on' : '') + '" data-dm-queue="' + n.id + '" title="Watch before Doomsday">★</button>') +
-      '</div>';
+      '<div class="t"><div class="tt">' + esc(n.title) + '</div><div class="s"><span class="dm-tier ' + n.tier + '">' + esc(tier.label || n.tier) + '</span>' + seenPill(n) + queuePill(n) + (n.hidden ? '<span class="dm-tier hid">⊘ not interested</span>' : '') + ' ' + esc(n.year || '') + (n.runtime ? ' · ' + mins(n.runtime) : '') + (n.episodes ? ' · ' + n.episodes + ' ep' : '') + (dots ? ' <span class="sdots">' + dots + '</span>' : '') + '</div></div>' +
+      acts + '</div>';
   }
   function listHtml() {
     var nodes = data.nodes.filter(passes), h = '', byDate = function (a, b) { return (a.date || '9999').localeCompare(b.date || '9999'); };
@@ -222,6 +235,8 @@
     var tg = nodes.filter(function (n) { return n.tier === 'target' || n.tier === 'future'; }).sort(byDate);
     if (tg.length) h += '<h3 class="dm-lh">The movies <span>' + tg.length + '</span></h3><div class="dm-list">' + tg.map(listRow).join('') + '</div>';
     if (!nodes.length) h += '<p class="empty">Nothing matches those filters.</p>';
+    var hid = data.nodes.filter(function (n) { return n.hidden; }).sort(byDate);
+    if (hid.length) h += '<details class="dm-cat dm-hiddenlist"><summary class="dm-lh">⊘ Not interested <span>' + hid.length + ' hidden · tap to show</span></summary><div class="dm-list">' + hid.map(function (n) { return listRow(n, true); }).join('') + '</div></details>';
     return '<div class="dm-listwrap">' + h + '</div>';
   }
   function panel(n) {
@@ -230,7 +245,7 @@
     return '<div class="dm-panel" style="' + (n.backdrop_url ? '--bd:url(' + esc(n.backdrop_url) + ')' : '') + '"><div class="dm-panel-bd"></div><button class="more" data-dm-close="1" aria-label="Close">✕</button>' +
       '<div class="dm-panel-top">' + (n.poster_url ? '<img src="' + esc(n.poster_url) + '" alt="">' : '') + '<div><h3>' + esc(n.title) + '</h3><div class="muted small">' + esc(fmt(n.date)) + (n.runtime ? ' · ' + mins(n.runtime) : '') + (n.episodes ? ' · ' + n.episodes + ' episodes' : '') + (n.rating ? ' · ★ ' + n.rating : '') + '</div></div></div>' +
       '<div class="dm-facts"><div><span class="k">For Doomsday</span><span class="dm-tier ' + n.tier + '">' + esc(tier.label || n.tier) + '</span></div>' +
-      (isTarget ? '' : '<div><span class="k">You</span>' + seenPill(n) + (n.queued ? '<span class="dm-tier q">★ queued' + (n.seen ? ' for a rewatch' : '') + '</span>' : '') + '</div>') +
+      (isTarget ? '' : '<div><span class="k">You</span>' + seenPill(n) + (n.queued ? '<span class="dm-tier q">★ queued' + (n.seen ? ' for a rewatch' : '') + '</span>' : '') + (n.hidden ? '<span class="dm-tier hid">⊘ not interested</span>' : '') + '</div>') +
       (!isTarget && n.seen && (n.tier === 'essential' || n.tier === 'recommended') && !n.queued ? '<div class="dm-hint">You\'ve seen this and it matters — ★ queue it if you want a refresher before the movie.</div>' : '') +
       (!isTarget && !n.seen && n.tier === 'essential' && !n.queued ? '<div class="dm-hint">Not seen yet and it\'s a must-watch — ★ queue it.</div>' : '') + '</div>' +
       '<p class="dm-why"><b>Why it matters:</b> ' + esc(n.why) + '</p>' +
@@ -240,6 +255,7 @@
         '<button class="btn ' + (n.seen ? '' : 'primary') + '" data-dm-toggle="' + n.id + '">' + (n.seen ? '✓ Seen · mark unseen' : 'I’ve seen it') + '</button>' +
         '<button class="btn ' + (n.queued ? 'on' : '') + '" data-dm-queue="' + n.id + '">' + (n.queued ? '★ Queued · remove' : (n.seen ? '★ Rewatch before Doomsday' : '★ Watch before Doomsday')) + '</button>' +
         (STATIC ? '' : (n.on_your_list ? '<span class="badge soft">on your list · ' + esc((n.list_bucket || '').replace('_', ' ')) + '</span>' : '<button class="btn" data-dm-add="' + n.id + '">Add to my list</button>')) +
+        '<button class="btn quiet" data-dm-hide="' + n.id + '">' + (n.hidden ? '↩ Show it again' : '⊘ Not interested') + '</button>' +
       '</div>') +
       '<div class="acts"><a class="btn" href="' + esc(n.tmdb_url) + '" target="_blank" rel="noopener">TMDB ↗</a></div></div>';
   }
@@ -433,15 +449,35 @@
       var st = localState();
       if (path === '/api/map/seen') { if (body.seen) st.seen[body.id] = 1; else delete st.seen[body.id]; }
       if (path === '/api/map/queue') { if (body.queued) st.queue[body.id] = 1; else delete st.queue[body.id]; }
+      if (path === '/api/map/hide') { if (body.hidden) { st.hidden[body.id] = 1; delete st.queue[body.id]; } else delete st.hidden[body.id]; }
       saveLocalState(st); return Promise.resolve({ ok: true });
     }
     return fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(function (r) { return r.json(); });
   }
-  function reload(keepSelection) {
+  function reload(keepSelection, flashId, popSel) {
     return fetch(DATA_URL, { cache: 'no-store' }).then(function (r) { return r.json(); }).then(applyLocal).then(function (j) {
-      data = j; var v = { x: view.x, y: view.y, k: view.k }, sel = selected; render(false); view = v; applyView();
+      data = j;
+      if (mode === 'list') {
+        var stEl = root.querySelector('.dm-stats'); if (stEl) stEl.outerHTML = stats();
+        rerenderList(flashId, popSel);
+        if (keepSelection && selected) { var ns = byId(selected); if (ns) detailEl().innerHTML = panel(ns); }
+        return;
+      }
+      var v = { x: view.x, y: view.y, k: view.k }, sel = selected; render(false); view = v; applyView();
       if (keepSelection && sel) { var n = byId(sel), d = detailEl(); if (n) { d.innerHTML = panel(n); var g = root.querySelector('[data-node="' + sel + '"]'); if (g) g.classList.add('on'); } }
     });
+  }
+  function rerenderList(flashId, popSel) {  // swap the list in place: keep scroll + open sections, flash the row that changed
+    var w = root.querySelector('.dm-listwrap'); if (!w) return;
+    var open = {}; [].forEach.call(w.querySelectorAll('details'), function (d) { open[d.className] = d.open; });
+    var y = window.scrollY;
+    w.outerHTML = listHtml();
+    [].forEach.call(root.querySelectorAll('.dm-listwrap details'), function (d) { if (open[d.className] != null) d.open = open[d.className]; });
+    window.scrollTo(0, y);
+    if (!flashId) return;
+    var rows = root.querySelectorAll('.dm-row[data-dm-rowopen="' + flashId + '"]');
+    [].forEach.call(rows, function (r) { r.classList.add('flash'); var b = popSel && r.querySelector(popSel); if (b) b.classList.add('pop'); });
+    setTimeout(function () { [].forEach.call(rows, function (r) { r.classList.remove('flash'); var b = r.querySelector('.pop'); if (b) b.classList.remove('pop'); }); }, 900);
   }
   function onClick(ev) {
     var t = ev.target, el;
@@ -465,9 +501,16 @@
       else filt[f] = !filt[f];
       saveFilt(); applyFilters(f); return;
     }
-    if ((el = t.closest('[data-dm-rowopen]'))) { if (t.closest('.dm-tgl')) return; select(el.dataset.dmRowopen); return; }
-    if ((el = t.closest('[data-dm-toggle]'))) { var n = byId(el.dataset.dmToggle); haptic(); post('/api/map/seen', { id: n.id, seen: !n.seen }).then(function () { return reload(true); }); return; }
-    if ((el = t.closest('[data-dm-queue]'))) { var nq = byId(el.dataset.dmQueue); haptic(); post('/api/map/queue', { id: nq.id, queued: !nq.queued }).then(function () { return reload(true); }); return; }
+    if ((el = t.closest('[data-dm-rowopen]')) && !t.closest('.dm-tgl')) { select(el.dataset.dmRowopen); return; }
+    if ((el = t.closest('[data-dm-toggle]'))) { var n = byId(el.dataset.dmToggle); haptic(); post('/api/map/seen', { id: n.id, seen: !n.seen }).then(function () { return reload(true, n.id, '[data-dm-toggle]'); }); return; }
+    if ((el = t.closest('[data-dm-queue]'))) { var nq = byId(el.dataset.dmQueue); haptic(); post('/api/map/queue', { id: nq.id, queued: !nq.queued }).then(function () { return reload(true, nq.id, '[data-dm-queue]'); }); return; }
+    if ((el = t.closest('[data-dm-hide]'))) {
+      var nh = byId(el.dataset.dmHide); haptic();
+      post('/api/map/hide', { id: nh.id, hidden: !nh.hidden }).then(function () { return reload(true, nh.id, '[data-dm-hide]'); }).then(function () {
+        if (mode === 'list' && !nh.hidden) { var hl = root.querySelector('.dm-hiddenlist'); if (hl) hl.open = true; }  // show where it went
+      });
+      return;
+    }
     if ((el = t.closest('[data-dm-add]'))) {
       var n2 = byId(el.dataset.dmAdd); haptic();
       post('/api/list/add', { line: n2.title.replace(/ — Season \d+$/, '') + ' {' + n2.key.replace(':', '/') + '}', section: n2.media_type === 'movie' ? 'movies_to_watch' : 'to_watch_running' })
@@ -570,7 +613,7 @@
     root.innerHTML = '<div class="dm-top"><div><h2 class="dm-h">Avengers: Doomsday — prep</h2><p class="muted small">Dec 18, 2026 · ' + (mode === 'map' ? 'drag to pan · pinch, scroll or double-tap to zoom · tap a title' : 'tap a title for why it matters · ✓ seen · ★ queue it for before the movie') + '</p></div>' + stats() + '</div>' +
       '<div class="dm-bar">' + modeHtml() + filtersHtml() + '</div>' + (mode === 'map' ? legend() : '') +
       body + '<p class="dm-note muted small">' + esc(data.note || '') + '</p>';
-    if (mode === 'map') { sizeStage(); lastNs = -1; if (fitView !== false) fit(false); else { view = clampView(view); applyView(); } updateCount(false); if (entrance) sweepIn(); } else staggerRows();
+    if (mode === 'map') { sizeStage(); lastNs = -1; if (fitView !== false) fit(false); else { view = clampView(view); applyView(); } updateCount(false); if (entrance) sweepIn(); } else if (entrance) staggerRows();
     if (entrance) bringIntoView();
     if (entrance) { var pane = root.querySelector(mode === 'map' ? '.dm-stage' : '.dm-listwrap'); if (pane) { pane.classList.add('dm-in'); setTimeout(function () { pane.classList.remove('dm-in'); }, 600); } }
   }
