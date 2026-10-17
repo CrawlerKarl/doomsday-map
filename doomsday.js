@@ -154,7 +154,7 @@
     data.nodes.forEach(function (n) {
       var cls = 'dm-node ' + n.tier + (n.seen ? ' seen' : '') + (n.queued ? ' queued' : '') + (selected === n.id ? ' on' : '') + (passes(n) ? '' : ' off') + (n.crowded ? ' crowded' : '');
       h += '<g class="' + cls + '" data-node="' + n.id + '" transform="translate(' + n.x + ',' + n.y + ')"><g class="dm-s" transform="scale(' + curNs.toFixed(4) + ')">';
-      if (n.tier === 'target') h += '<circle r="' + (n.r + 26) + '" class="dm-halo"/><circle r="' + (n.r + 12) + '" class="dm-halo2"/>';
+      if (n.tier === 'target') h += '<circle r="' + (n.r + 34) + '" class="dm-halo"/><circle r="' + (n.r + 18) + '" class="dm-halo2"/>';
       if (n.queued) h += '<circle r="' + (n.r + 11) + '" class="dm-qring"/>';
       h += '<circle r="' + (n.r + 4) + '" class="dm-ring"/><circle r="' + (n.r - 3) + '" fill="#1b232c"/>';
       if (n.poster_url) h += '<image href="' + esc(n.poster_url) + '" x="' + (-n.r) + '" y="' + (-n.r * 1.35) + '" width="' + (n.r * 2) + '" height="' + (n.r * 3) + '" clip-path="url(#clip-' + n.id + ')" preserveAspectRatio="xMidYMid slice"/>';
@@ -314,11 +314,13 @@
   // ---- view / zoom (viewBox based, so everything stays crisp) ------------------
   function stage() { return root.querySelector('.dm-stage'); }
   function svgEl() { return root.querySelector('.dmap-svg'); }
-  function stageRect() { return stage().getBoundingClientRect(); }
+  var rectCache = null;  // measured once per gesture/animation: no layout reads while fingers move
+  function stageRect() { return rectCache || stage().getBoundingClientRect(); }
+  function cacheRect(on) { rectCache = on ? stage().getBoundingClientRect() : null; }
   // The SVG is drawn (1 + 2·OV)× the stage. While a finger gesture or a zoom animation runs, the already-rasterised map is
   // only slid/scaled with a compositor transform (no re-layout, so nothing flickers); the viewBox is re-rendered once when
   // the gesture ends — or mid-gesture if it runs past the overscan or the raster would get too blurry.
-  var OV = 0.5, base = null, curNs = 1;
+  var OV = 0.35, base = null, curNs = 1;
   function applyView() {  // commit: crisp render of the current view
     var s = svgEl(); if (!s) return;
     if (!stage()) return;
@@ -340,17 +342,20 @@
   function applyGesture() {  // cheap per-frame step: transform the committed raster instead of re-rendering it
     var s = svgEl(); if (!s || !base) { applyView(); return; }
     var sc = view.k / base.k, dx = view.x - base.x * sc, dy = view.y - base.y * sc, r = stageRect();
-    if (sc < 0.6 || sc > 2 || Math.abs(dx) > r.width * OV * 0.9 || Math.abs(dy) > r.height * OV * 0.9) { applyView(); return; }
+    // re-render only when the transformed raster would stop covering the stage, or would be stretched too far to read
+    var left = dx - sc * OV * r.width, right = dx + sc * (1 + OV) * r.width, top = dy - sc * OV * r.height, bottom = dy + sc * (1 + OV) * r.height;
+    if (sc < 0.5 || sc > 3 || left > 1 || right < r.width - 1 || top > 1 || bottom < r.height - 1) { applyView(); return; }
     s.style.transform = 'translate(' + dx.toFixed(2) + 'px,' + dy.toFixed(2) + 'px) scale(' + sc.toFixed(4) + ')';
   }
   function animateTo(target) {
     if (anim) cancelAnimationFrame(anim);
     if (!base) applyView();
+    cacheRect(true);
     var from = { x: view.x, y: view.y, k: view.k }, t0 = performance.now(), dur = 380;
     var step = function (now) {
       var p = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - p, 3);
       view.k = from.k + (target.k - from.k) * e; view.x = from.x + (target.x - from.x) * e; view.y = from.y + (target.y - from.y) * e;
-      if (p < 1) { applyGesture(); anim = requestAnimationFrame(step); } else { anim = null; applyView(); }
+      if (p < 1) { applyGesture(); anim = requestAnimationFrame(step); } else { anim = null; applyView(); if (!dragging && !pinch) cacheRect(false); }
     };
     anim = requestAnimationFrame(step);
   }
@@ -423,6 +428,7 @@
     var st = stage(); if (!st) return;
     if (!ev.target.closest('.dm-stage') || ev.target.closest('.dm-side') || ev.target.closest('.dm-ctl')) return;  // only the map itself pans
     try { st.setPointerCapture && st.setPointerCapture(ev.pointerId); } catch (e) {}
+    if (!rectCache) cacheRect(true);
     pts[ev.pointerId] = { x: ev.clientX, y: ev.clientY };
     if (!dragging) dragging = { id: ev.pointerId, sx: ev.clientX, sy: ev.clientY, vx: view.x, vy: view.y, moved: false, target: ev.target.closest('[data-node]') };
     else if (!pinch) { var r = stageRect(); pinch = { a: dragging.id, b: ev.pointerId, ax: dragging.sx, ay: dragging.sy, bx: ev.clientX, by: ev.clientY, k0: view.k, x0: view.x, y0: view.y, r: r }; }
@@ -443,13 +449,14 @@
     if (Math.abs(dx) + Math.abs(dy) > 4) dragging.moved = true;
     if (dragging.moved) { view = clampView({ k: view.k, x: dragging.vx + dx, y: dragging.vy + dy }); applyGesture(); dismissCoach(); }
   }
+  function noPointers() { for (var k in pts) return false; return true; }
   function onPointerUp(ev) {
     delete pts[ev.pointerId];
-    if (pinch && (ev.pointerId === pinch.a || ev.pointerId === pinch.b)) { pinch = null; dragging = null; applyView(); return; }
-    if (!dragging || ev.pointerId !== dragging.id) return;
+    if (pinch && (ev.pointerId === pinch.a || ev.pointerId === pinch.b)) { pinch = null; dragging = null; applyView(); if (noPointers()) cacheRect(false); return; }
+    if (!dragging || ev.pointerId !== dragging.id) { if (noPointers()) cacheRect(false); return; }
     if (!dragging.moved) { if (dragging.target) select(dragging.target.dataset.node); else if (!ev.target.closest('.dm-side')) select(null); }
     else applyView();  // the drag ends: one crisp render
-    dragging = null;
+    dragging = null; if (noPointers()) cacheRect(false);
   }
   function onPointerCancel(ev) {
     delete pts[ev.pointerId];
@@ -457,6 +464,7 @@
     if (pinch && (ev.pointerId === pinch.a || ev.pointerId === pinch.b)) pinch = null;
     if (dragging && ev.pointerId === dragging.id) dragging = null;
     if (moved) applyView();
+    if (noPointers()) cacheRect(false);
   }
   function onWheel(ev) {
     var st = stage(); if (!st) return; ev.preventDefault();
