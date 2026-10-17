@@ -207,13 +207,16 @@
     if (!n.queued) return '';
     return '<span class="dm-tier q">★ ' + (n.seen ? 'rewatch' : 'watch') + ' queued</span>';
   }
-  function listRow(n, inHidden) {
-    var tier = data.tiers[n.tier] || {}, dots = (n.services || []).map(function (s) { return '<i class="' + esc(s.id) + '" title="' + esc(s.label) + '"></i>'; }).join('');
-    var isTarget = n.tier === 'target' || n.tier === 'future';
-    var acts = isTarget ? '' : '<div class="dm-acts">' +
+  function actsHtml(n, cls) {  // the three independent marks: seen · watch/rewatch queue · not interested
+    if (n.tier === 'target' || n.tier === 'future') return '';
+    return '<div class="dm-acts' + (cls ? ' ' + cls : '') + '">' +
       '<button class="dm-tgl seen' + (n.seen ? ' on' : '') + '" data-dm-toggle="' + n.id + '" title="' + (n.seen ? 'Seen · tap to mark unseen' : 'Mark as seen') + '"><i>✓</i><span>' + (n.seen ? 'Seen' : 'Seen?') + '</span></button>' +
       '<button class="dm-tgl star' + (n.queued ? ' on' : '') + '" data-dm-queue="' + n.id + '" title="' + (n.queued ? 'Queued · tap to remove' : (n.seen ? 'Rewatch before Doomsday' : 'Watch before Doomsday')) + '"><i>★</i><span>' + (n.queued ? 'Queued' : (n.seen ? 'Rewatch' : 'Watch')) + '</span></button>' +
-      '<button class="dm-tgl hide' + (n.hidden ? ' on' : '') + '" data-dm-hide="' + n.id + '" title="' + (n.hidden ? 'Show it again' : 'Not interested · hide it') + '"><i>' + (n.hidden ? '↩' : '⊘') + '</i><span>' + (n.hidden ? 'Unhide' : 'Hide') + '</span></button></div>';
+      '<button class="dm-tgl hide' + (n.hidden ? ' on' : '') + '" data-dm-hide="' + n.id + '" title="' + (n.hidden ? 'Show it again' : 'Not interested · hide it') + '"><i>' + (n.hidden ? '↩' : '⊘') + '</i><span>' + (n.hidden ? 'Unhide' : (cls ? 'Not interested' : 'Hide')) + '</span></button></div>';
+  }
+  function listRow(n, inHidden) {
+    var tier = data.tiers[n.tier] || {}, dots = (n.services || []).map(function (s) { return '<i class="' + esc(s.id) + '" title="' + esc(s.label) + '"></i>'; }).join('');
+    var acts = actsHtml(n, '');
     return '<div class="dm-row' + (n.seen ? ' seen' : '') + (n.queued ? ' queued' : '') + (inHidden ? ' hidden' : '') + '" data-dm-rowopen="' + n.id + '">' +
       (n.poster_url ? '<img src="' + esc(n.poster_url) + '" alt="" loading="lazy">' : '<span class="ph"></span>') +
       '<div class="t"><div class="tt">' + esc(n.title) + '</div><div class="s"><span class="dm-tier ' + n.tier + '">' + esc(tier.label || n.tier) + '</span>' + seenPill(n) + queuePill(n) + (n.hidden ? '<span class="dm-tier hid">⊘ not interested</span>' : '') + ' ' + esc(n.year || '') + (n.runtime ? ' · ' + mins(n.runtime) : '') + (n.episodes ? ' · ' + n.episodes + ' ep' : '') + (dots ? ' <span class="sdots">' + dots + '</span>' : '') + '</div></div>' +
@@ -244,6 +247,7 @@
     var pills = (n.services || []).length ? n.services.map(function (s) { return s.url ? '<a class="pill ' + esc(s.id) + '" href="' + esc(s.url) + '" target="_blank" rel="noopener">' + esc(s.label) + ' ↗</a>' : '<span class="pill ' + esc(s.id) + '">' + esc(s.label) + '</span>'; }).join('') : '<span class="pill none">not on your services</span>';
     return '<div class="dm-panel" style="' + (n.backdrop_url ? '--bd:url(' + esc(n.backdrop_url) + ')' : '') + '"><div class="dm-panel-bd"></div><button class="more" data-dm-close="1" aria-label="Close">✕</button>' +
       '<div class="dm-panel-top">' + (n.poster_url ? '<img src="' + esc(n.poster_url) + '" alt="">' : '') + '<div><h3>' + esc(n.title) + '</h3><div class="muted small">' + esc(fmt(n.date)) + (n.runtime ? ' · ' + mins(n.runtime) : '') + (n.episodes ? ' · ' + n.episodes + ' episodes' : '') + (n.rating ? ' · ★ ' + n.rating : '') + '</div></div></div>' +
+      actsHtml(n, 'panel') +
       '<div class="dm-facts"><div><span class="k">For Doomsday</span><span class="dm-tier ' + n.tier + '">' + esc(tier.label || n.tier) + '</span></div>' +
       (isTarget ? '' : '<div><span class="k">You</span>' + seenPill(n) + (n.queued ? '<span class="dm-tier q">★ queued' + (n.seen ? ' for a rewatch' : '') + '</span>' : '') + (n.hidden ? '<span class="dm-tier hid">⊘ not interested</span>' : '') + '</div>') +
       (!isTarget && n.seen && (n.tier === 'essential' || n.tier === 'recommended') && !n.queued ? '<div class="dm-hint">You\'ve seen this and it matters — ★ queue it if you want a refresher before the movie.</div>' : '') +
@@ -251,13 +255,9 @@
       '<p class="dm-why"><b>Why it matters:</b> ' + esc(n.why) + '</p>' +
       (n.overview ? '<p class="dm-ov">' + esc(n.overview) + '</p>' : '') +
       '<div class="pills">' + pills + '</div>' +
-      (isTarget ? '' : '<div class="acts">' +
-        '<button class="btn ' + (n.seen ? '' : 'primary') + '" data-dm-toggle="' + n.id + '">' + (n.seen ? '✓ Seen · mark unseen' : 'I’ve seen it') + '</button>' +
-        '<button class="btn ' + (n.queued ? 'on' : '') + '" data-dm-queue="' + n.id + '">' + (n.queued ? '★ Queued · remove' : (n.seen ? '★ Rewatch before Doomsday' : '★ Watch before Doomsday')) + '</button>' +
-        (STATIC ? '' : (n.on_your_list ? '<span class="badge soft">on your list · ' + esc((n.list_bucket || '').replace('_', ' ')) + '</span>' : '<button class="btn" data-dm-add="' + n.id + '">Add to my list</button>')) +
-        '<button class="btn quiet" data-dm-hide="' + n.id + '">' + (n.hidden ? '↩ Show it again' : '⊘ Not interested') + '</button>' +
-      '</div>') +
-      '<div class="acts"><a class="btn" href="' + esc(n.tmdb_url) + '" target="_blank" rel="noopener">TMDB ↗</a></div></div>';
+      '<div class="acts">' +
+        (isTarget || STATIC ? '' : (n.on_your_list ? '<span class="badge soft">on your list · ' + esc((n.list_bucket || '').replace('_', ' ')) + '</span>' : '<button class="btn" data-dm-add="' + n.id + '">Add to my list</button>')) +
+        '<a class="btn" href="' + esc(n.tmdb_url) + '" target="_blank" rel="noopener">TMDB ↗</a></div></div>';
   }
 
   // ---- labels: four candidate spots per title, chosen for the current zoom ----------
@@ -457,14 +457,15 @@
   function reload(keepSelection, flashId, popSel) {
     return fetch(DATA_URL, { cache: 'no-store' }).then(function (r) { return r.json(); }).then(applyLocal).then(function (j) {
       data = j;
+      var popPanel = function () { var b = popSel && detailEl().querySelector(popSel); if (b) { b.classList.add('pop'); setTimeout(function () { b.classList.remove('pop'); }, 700); } };
       if (mode === 'list') {
         var stEl = root.querySelector('.dm-stats'); if (stEl) stEl.outerHTML = stats();
         rerenderList(flashId, popSel);
-        if (keepSelection && selected) { var ns = byId(selected); if (ns) detailEl().innerHTML = panel(ns); }
+        if (keepSelection && selected) { var ns = byId(selected); if (ns) { detailEl().innerHTML = panel(ns); popPanel(); } }
         return;
       }
       var v = { x: view.x, y: view.y, k: view.k }, sel = selected; render(false); view = v; applyView();
-      if (keepSelection && sel) { var n = byId(sel), d = detailEl(); if (n) { d.innerHTML = panel(n); var g = root.querySelector('[data-node="' + sel + '"]'); if (g) g.classList.add('on'); } }
+      if (keepSelection && sel) { var n = byId(sel), d = detailEl(); if (n) { d.innerHTML = panel(n); popPanel(); var g = root.querySelector('[data-node="' + sel + '"]'); if (g) g.classList.add('on'); } }
     });
   }
   function rerenderList(flashId, popSel) {  // swap the list in place: keep scroll + open sections, flash the row that changed
@@ -630,6 +631,12 @@
         .catch(function (e) { root.innerHTML = '<p class="empty">Could not load the map: ' + esc(e.message) + '</p>'; });
       window.addEventListener('resize', function () { if (root && root.isConnected && data && mode === 'map') { var was = atFit(); sizeStage(); if (was) fit(false); else { view = clampView(view); applyView(); } } });
       document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape' && selected) select(null); });
+      document.addEventListener('click', function (ev) {
+        if (!STATIC || !ev.target.closest('[data-dm-clearmarks]')) return;
+        if (!window.confirm('Clear every seen, queue and not-interested mark stored in this browser?')) return;
+        try { localStorage.removeItem('dm_state'); } catch (e) {}
+        select(null); reload(false);
+      });
     }
   };
 })();

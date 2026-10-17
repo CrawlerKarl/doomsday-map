@@ -251,3 +251,9 @@ details.dm-cat[open] summary::after{content:" ▾"}
 /* ---- zoom: nothing snaps. Labels, year ticks and lane notes fade; label placement waits for the gesture to settle ---- */
 .dm-node text,.dm-lane-note,.dm-year{transition:opacity .28s}
 .z0 .dm-year.alt{opacity:0}
+
+/* ---- panel: the same Seen · Watch · Not interested strip as the list, right under the title ---- */
+.dm-acts.panel{padding:0;margin:12px 0 2px;gap:8px}
+.dm-acts.panel .dm-tgl{flex:1 1 0;width:auto;max-width:none;height:44px;flex-direction:row;gap:7px}
+.dm-acts.panel .dm-tgl i{font-size:1rem}
+.dm-acts.panel .dm-tgl span{font-size:.72rem;letter-spacing:.02em;text-transform:none;font-weight:700}
