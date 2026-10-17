@@ -183,3 +183,39 @@ details.dm-cat[open] summary::after{content:" ▾"}
 .dm-row.dm-in{animation:dmRowIn .42s cubic-bezier(.2,.8,.2,1) both;animation-delay:var(--d,0ms)}
 @keyframes dmRowIn{from{opacity:0;transform:translateY(10px) scale(.98)}}
 @media(prefers-reduced-motion:reduce){.dm-out{display:none}.dm-node.dm-in,.dm-row.dm-in{animation:none}}
+
+/* ---- two filter rows work independently; one Reset clears both. Map/List switches fade the pane in ---- */
+.dm-barrow{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.dm-reset{display:inline-flex;align-items:center;gap:8px;min-height:42px;padding:0 16px;border-radius:999px;border:1px solid rgba(255,204,51,.55);background:linear-gradient(180deg,rgba(255,204,51,.18),rgba(255,204,51,.06));color:var(--text);font-weight:700;font-size:.88rem;cursor:pointer;white-space:nowrap;opacity:0;visibility:hidden;transform:translateX(10px);transition:opacity .22s,transform .22s,visibility 0s .22s}
+.dm-reset.show{opacity:1;visibility:visible;transform:none;transition:opacity .22s,transform .22s}
+.dm-reset b{min-width:22px;height:22px;padding:0 7px;border-radius:999px;background:var(--accent);color:var(--accent-ink);font-size:.78rem;display:inline-grid;place-items:center}
+.dm-reset.show:active{transform:scale(.96)}
+.dm-mode button.pop{animation:chipPop .45s cubic-bezier(.2,.8,.2,1)}
+.dm-stage.dm-in,.dm-listwrap.dm-in{animation:dmPaneIn .45s cubic-bezier(.2,.8,.2,1) both}
+@keyframes dmPaneIn{from{opacity:0;transform:translateY(10px) scale(.985)}}
+@media(max-width:520px){.dm-reset{padding:0 13px;font-size:.84rem}}
+
+/* ---- phones: map front and centre, page scrolls past it, never lost in black space ---- */
+.dm-fitpill{display:none;position:absolute;right:10px;top:10px;z-index:4;transform:translate(0,-8px);opacity:0;pointer-events:none;min-height:36px;padding:0 14px;border-radius:999px;border:1px solid rgba(255,204,51,.55);background:rgba(19,26,34,.88);color:var(--text);font-weight:700;font-size:.82rem;backdrop-filter:blur(8px);white-space:nowrap;transition:opacity .2s,transform .2s;cursor:pointer}
+.dm-stage.zoomed .dm-fitpill{opacity:1;transform:none;pointer-events:auto}
+.dm-coach{position:absolute;left:50%;bottom:64px;z-index:4;transform:translateX(-50%);padding:8px 12px;border-radius:999px;background:rgba(19,26,34,.9);border:1px solid var(--line-strong);color:var(--text);font-size:.8rem;font-weight:600;pointer-events:none;animation:dmCoach 1.6s ease-in-out infinite;transition:opacity .35s}
+.dm-coach.gone{opacity:0}
+@keyframes dmCoach{0%,100%{transform:translate(-50%,0)}50%{transform:translate(calc(-50% - 8px),0)}}
+@media(max-width:759px){
+  .dmap{display:flex;flex-direction:column}
+  .dm-top{order:0;margin:0 0 6px}
+  .dm-top>div:first-child{display:none}
+  .dm-stats{font-size:.78rem;gap:6px 12px}
+  .dm-stats b{font-size:.95rem}
+  .dm-bar{order:1;margin:0 0 8px;gap:6px}
+  .dm-filters .fchip{min-height:36px;font-size:.82rem}
+  .dm-filters.lanes .fchip{min-height:32px}
+  .dm-stage{order:2;height:62vh;border-radius:16px}
+  .dm-listwrap{order:2}
+  .dm-legend{order:3;margin:10px 0 0}
+  .dm-note{order:4}
+  .dm-fitpill{display:inline-flex}
+  .dm-ctl{top:auto;bottom:10px;flex-direction:row}
+  .dm-ctl button{width:40px;height:40px}
+  .dm-count{bottom:auto;top:10px;left:10px}
+}

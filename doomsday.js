@@ -178,7 +178,7 @@
   function filtersHtml() {
     var ts = filt.tiers;
     return '<div class="dm-filters">' +
-      chip('All', !anyFilter(), 'data-dmf="all"') +
+      chip('All', !tiersOn().length, 'data-dmf="all"') +
       chip('Must watch', !!ts.essential, 'data-dmf="tier:essential"') +
       chip('Worth watching', !!ts.recommended, 'data-dmf="tier:recommended"') +
       chip('Only if curious', !!ts.background, 'data-dmf="tier:background"') +
@@ -188,8 +188,11 @@
       chip('★ Queued only', filt.queuedOnly, 'data-dmf="queuedOnly"') + '</div>' +
       '<div class="dm-filters lanes">' + chip('All universes', !lanesOn().length, 'data-dmf="lanes:all"') + data.lanes.map(function (l) { return chip(l.label.replace('Marvel Television (ABC, Hulu)', 'Marvel TV').replace('Captain America → New Avengers', 'Cap → New Avengers').replace('Marvel before the MCU', 'Pre-MCU').replace(' (Fox era)', ''), !!(filt.lanes || {})[l.id], 'data-dmf="lane:' + l.id + '"'); }).join('') + '</div>';
   }
+  function filterCount() { return tiersOn().length + lanesOn().length + (filt.hideSeen ? 1 : 0) + (filt.queuedOnly ? 1 : 0); }
   function modeHtml() {
-    return '<div class="seg dm-mode"><button data-dm-mode="map" class="' + (mode === 'map' ? 'on' : '') + '">Map</button><button data-dm-mode="list" class="' + (mode === 'list' ? 'on' : '') + '">List</button></div>';
+    var n = filterCount();
+    return '<div class="dm-barrow"><div class="seg dm-mode"><button data-dm-mode="map" class="' + (mode === 'map' ? 'on' : '') + '">Map</button><button data-dm-mode="list" class="' + (mode === 'list' ? 'on' : '') + '">List</button></div>' +
+      '<button class="dm-reset' + (n ? ' show' : '') + '" data-dmf="reset" aria-hidden="' + (n ? 'false' : 'true') + '">↺ Reset filters' + (n ? '<b>' + n + '</b>' : '') + '</button></div>';
   }
   function seenPill(n) {
     if (n.tier === 'target' || n.tier === 'future') return '';
@@ -300,6 +303,9 @@
     if (s.__ns !== tf) { s.__ns = tf; var gs = s.querySelectorAll('.dm-s'); for (var i = 0; i < gs.length; i++) gs[i].setAttribute('transform', tf); }
     placeLabels(ns, false);
     s.setAttribute('class', 'dmap-svg ' + (k < 0.5 ? 'z0' : k < 1.1 ? 'z1' : k < 2 ? 'z2' : 'z3') + (selected ? ' has-sel' : ''));
+    var st = stage(), zoomed = !atFit();
+    st.style.touchAction = zoomed ? 'none' : 'pan-y';
+    st.classList.toggle('zoomed', zoomed);
   }
   function animateTo(target) {
     if (anim) cancelAnimationFrame(anim);
@@ -317,15 +323,50 @@
     return { k: k, x: (r.width - W * k) / 2, y: (r.height - H * k) / 2 };
   }
   function fit(animate) { var t = fitTarget(); if (animate) animateTo(t); else { view = t; applyView(); } }
+  var SLACK = 40;  // px of black allowed past the map's edge while panning
+  function clampView(v) {  // the fitted size is the floor for zoom; the map edges never leave the stage by more than SLACK
+    var r = stageRect(), kmin = fitTarget().k;
+    if (v.k < kmin) v.k = kmin;
+    var mw = W * v.k, mh = H * v.k;
+    v.x = mw <= r.width ? (r.width - mw) / 2 : Math.min(SLACK, Math.max(r.width - mw - SLACK, v.x));
+    v.y = mh <= r.height ? (r.height - mh) / 2 : Math.min(SLACK, Math.max(r.height - mh - SLACK, v.y));
+    return v;
+  }
+  function atFit() { return view.k <= fitTarget().k * 1.03; }
   function zoomAt(f, px, py, animate) {
-    var k2 = Math.max(0.12, Math.min(6, view.k * f));
-    var t = { k: k2, x: px - (px - view.x) * (k2 / view.k), y: py - (py - view.y) * (k2 / view.k) };
+    var k2 = Math.max(fitTarget().k, Math.min(6, view.k * f));
+    var t = clampView({ k: k2, x: px - (px - view.x) * (k2 / view.k), y: py - (py - view.y) * (k2 / view.k) });
     if (animate) animateTo(t); else { view = t; applyView(); }
   }
   function goTo(id) {
     var n = byId(id); if (!n) return;
     var r = stageRect(), k = Math.max(view.k, 1.1), cy = r.width < 700 ? r.height * 0.28 : r.height / 2;
-    animateTo({ k: k, x: r.width / 2 - n.x * k, y: cy - n.y * k });
+    animateTo(clampView({ k: k, x: r.width / 2 - n.x * k, y: cy - n.y * k }));
+  }
+  var PHONE = function () { return window.innerWidth < 760; };
+  function stickyOffset() {  // the tracker's tab bar sticks to the top; the public page has nothing sticky
+    var el = document.getElementById('tabbar'); if (!el) return 0;
+    return getComputedStyle(el).position === 'sticky' ? el.getBoundingClientRect().height : 0;
+  }
+  function sizeStage() {  // on phones the map takes the viewport below the controls, so it is fully visible without scrolling
+    var st = stage(); if (!st) return;
+    if (!PHONE()) { if (st.style.height) { st.style.height = ''; } return; }
+    var bar = root.querySelector('.dm-bar'), vh = window.innerHeight;
+    var above = STATIC ? st.getBoundingClientRect().top + window.scrollY : stickyOffset() + (bar ? st.getBoundingClientRect().top - bar.getBoundingClientRect().top : 0);
+    var h = Math.max(360, Math.min(760, vh - above - 14));
+    st.style.height = h + 'px';
+  }
+  function bringIntoView() {  // tracker only: when the Doomsday tab opens on a phone, park the controls under the tab bar
+    if (STATIC || !PHONE()) return;
+    var bar = root.querySelector('.dm-bar'); if (!bar) return;
+    var top = bar.getBoundingClientRect().top + window.scrollY - stickyOffset() - 6;
+    if (window.scrollY < top - 24) window.scrollTo({ top: top, behavior: 'smooth' });
+  }
+  function dismissCoach() { var c = root.querySelector('.dm-coach'); if (c && !c.classList.contains('gone')) { c.classList.add('gone'); setTimeout(function () { c.remove(); }, 400); } }
+  function coachHtml() {
+    if (!PHONE() || store('dm_coach')) return '';
+    store('dm_coach', '1'); setTimeout(dismissCoach, 5000);
+    return '<div class="dm-coach">← swipe to go back in time · pinch to zoom</div>';
   }
   function detailEl() { var d = document.getElementById('dmDetail'); if (!d) { d = document.createElement('div'); d.id = 'dmDetail'; d.className = 'dm-detail'; document.body.appendChild(d); d.addEventListener('click', onClick); } return d; }
   function select(id) {
@@ -355,14 +396,14 @@
     if (pinch) {
       var a = pts[pinch.a] || { x: pinch.ax, y: pinch.ay }, b = pts[pinch.b] || { x: pinch.bx, y: pinch.by };
       var d0 = Math.hypot(pinch.bx - pinch.ax, pinch.by - pinch.ay), d1 = Math.hypot(b.x - a.x, b.y - a.y);
-      var k2 = Math.max(0.12, Math.min(6, pinch.k0 * (d1 / (d0 || 1))));
+      var k2 = Math.max(fitTarget().k, Math.min(6, pinch.k0 * (d1 / (d0 || 1))));
       var cx = (a.x + b.x) / 2 - pinch.r.left, cy = (a.y + b.y) / 2 - pinch.r.top, c0x = (pinch.ax + pinch.bx) / 2 - pinch.r.left, c0y = (pinch.ay + pinch.by) / 2 - pinch.r.top;
-      view.k = k2; view.x = cx - (c0x - pinch.x0) * (k2 / pinch.k0); view.y = cy - (c0y - pinch.y0) * (k2 / pinch.k0); applyView(); return;
+      view = clampView({ k: k2, x: cx - (c0x - pinch.x0) * (k2 / pinch.k0), y: cy - (c0y - pinch.y0) * (k2 / pinch.k0) }); applyView(); return;
     }
     if (!dragging || ev.pointerId !== dragging.id) return;
     var dx = ev.clientX - dragging.sx, dy = ev.clientY - dragging.sy;
     if (Math.abs(dx) + Math.abs(dy) > 4) dragging.moved = true;
-    if (dragging.moved) { view.x = dragging.vx + dx; view.y = dragging.vy + dy; applyView(); }
+    if (dragging.moved) { view = clampView({ k: view.k, x: dragging.vx + dx, y: dragging.vy + dy }); applyView(); dismissCoach(); }
   }
   function onPointerUp(ev) {
     delete pts[ev.pointerId];
@@ -371,6 +412,7 @@
     if (!dragging.moved) { if (dragging.target) select(dragging.target.dataset.node); else if (!ev.target.closest('.dm-side')) select(null); }
     dragging = null;
   }
+  function onPointerCancel(ev) { delete pts[ev.pointerId]; if (pinch && (ev.pointerId === pinch.a || ev.pointerId === pinch.b)) pinch = null; if (dragging && ev.pointerId === dragging.id) dragging = null; }
   function onWheel(ev) {
     var st = stage(); if (!st) return; ev.preventDefault();
     var r = stageRect(); zoomAt(Math.exp(-ev.deltaY * 0.0016), ev.clientX - r.left, ev.clientY - r.top);
@@ -399,10 +441,16 @@
     if (t.closest('[data-dm-fit]')) { fit(true); return; }
     if ((el = t.closest('[data-dm-goto]'))) { goTo(el.dataset.dmGoto); select(el.dataset.dmGoto); return; }
     if (t.closest('[data-dm-close]')) { select(null); return; }
-    if ((el = t.closest('[data-dm-mode]'))) { mode = el.dataset.dmMode; store('dm_mode', mode); haptic(); select(null); render(mode === 'map'); return; }
+    if ((el = t.closest('[data-dm-mode]'))) {
+      if (el.dataset.dmMode === mode) return;
+      mode = el.dataset.dmMode; store('dm_mode', mode); haptic(); select(null); render(mode === 'map', true);
+      var mb = root.querySelector('[data-dm-mode="' + mode + '"]'); if (mb) { mb.classList.add('pop'); setTimeout(function () { mb.classList.remove('pop'); }, 650); }
+      return;
+    }
     if ((el = t.closest('[data-dmf]'))) {
       var f = el.dataset.dmf; haptic();
-      if (f === 'all') filt = { tiers: {}, lanes: {}, hideSeen: false, queuedOnly: false };
+      if (f === 'reset') filt = { tiers: {}, lanes: {}, hideSeen: false, queuedOnly: false };  // the big button clears both rows
+      else if (f === 'all') filt.tiers = {};  // row-local: tiers only, lanes untouched
       else if (f === 'lanes:all') filt.lanes = {};
       else if (f.indexOf('tier:') === 0) { var tn = f.slice(5); filt.tiers[tn] = !filt.tiers[tn]; }
       else if (f.indexOf('lane:') === 0) { var ln = f.slice(5); filt.lanes = filt.lanes || {}; filt.lanes[ln] = !filt.lanes[ln]; }
@@ -442,13 +490,35 @@
     var rows = root.querySelectorAll('.dm-row');
     for (var i = 0; i < rows.length; i++) { rows[i].style.setProperty('--d', Math.min(i * 26, 420) + 'ms'); rows[i].classList.add('dm-in'); }
   }
+  function delayFn(shown) {  // left→right stagger so titles arrive in a wave toward Doomsday
+    var minX = Infinity, maxX = -Infinity;
+    shown.forEach(function (n) { if (n.x < minX) minX = n.x; if (n.x > maxX) maxX = n.x; });
+    var span = Math.max(1, maxX - minX);
+    return function (n) { return Math.round(40 + ((typeof n === 'number' ? n : n.x) - minX) / span * 380) + 'ms'; };
+  }
+  function clearMotionLater(s) {
+    clearTimeout(hideTimer);
+    hideTimer = setTimeout(function () {
+      var outs = s.querySelectorAll('.dm-out'); for (var a = 0; a < outs.length; a++) { if (outs[a].classList.contains('dm-chain')) outs[a].remove(); else { outs[a].classList.remove('dm-out'); outs[a].classList.add('off'); } }
+      var ins = s.querySelectorAll('.dm-in'); for (var b = 0; b < ins.length; b++) ins[b].classList.remove('dm-in');
+    }, 900);
+  }
+  function sweepIn() {  // every visible title grows in, left to right (first paint and Map/List switches)
+    var s = svgEl(); if (!s) return;
+    var shown = data.nodes.filter(passes), delayOf = delayFn(shown);
+    shown.forEach(function (n) {
+      var g = s.querySelector('[data-node="' + n.id + '"]'), e = s.querySelector('.dm-edge[data-for="' + n.id + '"]');
+      if (g) { g.style.setProperty('--d', delayOf(n)); g.classList.add('dm-in'); }
+      if (e && !e.classList.contains('off')) { e.style.setProperty('--d', delayOf(n)); e.classList.add('dm-in'); }
+    });
+    var ch = s.querySelectorAll('.dm-chain'); for (var i = 0; i < ch.length; i++) { ch[i].style.setProperty('--d', delayOf(+ch[i].getAttribute('x2'))); ch[i].classList.add('dm-in'); }
+    clearMotionLater(s);
+  }
   function animateVisibility() {
     var s = svgEl(); if (!s) return;
     var vis = {}, shown = [];
     data.nodes.forEach(function (n) { vis[n.id] = passes(n); if (vis[n.id]) shown.push(n); });
-    var minX = Infinity, maxX = -Infinity;
-    shown.forEach(function (n) { if (n.x < minX) minX = n.x; if (n.x > maxX) maxX = n.x; });
-    var span = Math.max(1, maxX - minX), delayOf = function (n) { return Math.round(40 + (n.x - minX) / span * 380) + 'ms'; };
+    var delayOf = delayFn(shown);
     var finish = function (el) { el.classList.remove('dm-in', 'dm-out'); };
     data.nodes.forEach(function (n) {
       var g = s.querySelector('[data-node="' + n.id + '"]'); if (!g) return;
@@ -472,11 +542,7 @@
     });
     var anchor = s.querySelector('.dm-edge') || s.querySelector('.dm-node');
     if (ch && anchor) { var tmp = document.createElementNS('http://www.w3.org/2000/svg', 'g'); tmp.innerHTML = ch; while (tmp.firstChild) s.insertBefore(tmp.firstChild, anchor); }
-    clearTimeout(hideTimer);
-    hideTimer = setTimeout(function () {
-      var outs = s.querySelectorAll('.dm-out'); for (var a = 0; a < outs.length; a++) { if (outs[a].classList.contains('dm-chain')) outs[a].remove(); else { outs[a].classList.remove('dm-out'); outs[a].classList.add('off'); } }
-      var ins = s.querySelectorAll('.dm-in'); for (var b = 0; b < ins.length; b++) ins[b].classList.remove('dm-in');
-    }, 900);
+    clearMotionLater(s);
     lastNs = -1; applyView();  // labels re-flow for the new set
     updateCount(true);
   }
@@ -488,28 +554,30 @@
     if (bump) { el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); }
   }
 
-  function render(fitView) {
+  function render(fitView, entrance) {
     var body = mode === 'map'
       ? '<div class="dm-stage" data-dm-stage="1">' + svg() +
-        '<div class="dm-ctl"><button data-dm-zoom="1" aria-label="Zoom in">+</button><button data-dm-zoom="-1" aria-label="Zoom out">−</button><button data-dm-fit="1" aria-label="Fit">⤢</button><button data-dm-goto="doomsday" title="Jump to Doomsday">🎯</button></div><div class="dm-count" aria-live="polite"></div></div>'
+        '<div class="dm-ctl"><button data-dm-zoom="1" aria-label="Zoom in">+</button><button data-dm-zoom="-1" aria-label="Zoom out">−</button><button data-dm-fit="1" aria-label="Fit">⤢</button><button data-dm-goto="doomsday" title="Jump to Doomsday">🎯</button></div><div class="dm-count" aria-live="polite"></div><button class="dm-fitpill" data-dm-fit="1">⤢ Show whole map</button>' + coachHtml() + '</div>'
       : listHtml();
     root.innerHTML = '<div class="dm-top"><div><h2 class="dm-h">Avengers: Doomsday — prep</h2><p class="muted small">Dec 18, 2026 · ' + (mode === 'map' ? 'drag to pan · pinch, scroll or double-tap to zoom · tap a title' : 'tap a title for why it matters · ✓ seen · ★ queue it for before the movie') + '</p></div>' + stats() + '</div>' +
       '<div class="dm-bar">' + modeHtml() + filtersHtml() + '</div>' + (mode === 'map' ? legend() : '') +
       body + '<p class="dm-note muted small">' + esc(data.note || '') + '</p>';
-    if (mode === 'map') { lastNs = -1; if (fitView !== false) fit(false); else applyView(); updateCount(false); } else staggerRows();
+    if (mode === 'map') { sizeStage(); lastNs = -1; if (fitView !== false) fit(false); else { view = clampView(view); applyView(); } updateCount(false); if (entrance) sweepIn(); } else staggerRows();
+    if (entrance) bringIntoView();
+    if (entrance) { var pane = root.querySelector(mode === 'map' ? '.dm-stage' : '.dm-listwrap'); if (pane) { pane.classList.add('dm-in'); setTimeout(function () { pane.classList.remove('dm-in'); }, 600); } }
   }
 
   window.Doomsday = {
     mount: function (el) {
       root = el;
       root.addEventListener('pointerdown', onPointerDown); root.addEventListener('pointermove', onPointerMove);
-      root.addEventListener('pointerup', onPointerUp); root.addEventListener('pointercancel', onPointerUp);
+      root.addEventListener('pointerup', onPointerUp); root.addEventListener('pointercancel', onPointerCancel);
       root.addEventListener('wheel', onWheel, { passive: false }); root.addEventListener('dblclick', onDblClick);
       root.addEventListener('click', onClick);
       root.innerHTML = '<div class="skel" style="height:60vh"></div>';
-      fetch(DATA_URL, { cache: 'no-store' }).then(function (r) { return r.json(); }).then(applyLocal).then(function (j) { data = j; render(true); })
+      fetch(DATA_URL, { cache: 'no-store' }).then(function (r) { return r.json(); }).then(applyLocal).then(function (j) { data = j; render(true, true); })
         .catch(function (e) { root.innerHTML = '<p class="empty">Could not load the map: ' + esc(e.message) + '</p>'; });
-      window.addEventListener('resize', function () { if (root && root.isConnected && data && mode === 'map') applyView(); });
+      window.addEventListener('resize', function () { if (root && root.isConnected && data && mode === 'map') { var was = atFit(); sizeStage(); if (was) fit(false); else { view = clampView(view); applyView(); } } });
       document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape' && selected) select(null); });
     }
   };
