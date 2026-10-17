@@ -221,7 +221,7 @@ details.dm-cat[open] summary::after{content:" ▾"}
 @media(max-width:520px){.dm-reset{padding:0 13px;font-size:.84rem}}
 
 /* ---- phones: map front and centre, page scrolls past it, never lost in black space ---- */
-.dm-fitpill{display:none;position:absolute;left:50%;top:10px;z-index:4;transform:translate(-50%,-8px);opacity:0;pointer-events:none;min-height:36px;padding:0 14px;border-radius:999px;border:1px solid rgba(255,204,51,.55);background:rgba(19,26,34,.88);color:var(--text);font-weight:700;font-size:.82rem;backdrop-filter:blur(8px);white-space:nowrap;transition:opacity .2s,transform .2s;cursor:pointer}
+.dm-fitpill{display:none;position:absolute;left:50%;top:10px;z-index:4;transform:translate(-50%,-8px);opacity:0;pointer-events:none;align-items:center;justify-content:center;line-height:1;height:38px;padding:0 16px;border-radius:999px;border:1px solid rgba(255,204,51,.55);background:rgba(19,26,34,.88);color:var(--text);font-weight:700;font-size:.82rem;backdrop-filter:blur(8px);white-space:nowrap;transition:opacity .2s,transform .2s;cursor:pointer}
 .dm-stage.zoomed .dm-fitpill{opacity:1;transform:translate(-50%,0);pointer-events:auto}
 .dm-coach{position:absolute;left:50%;bottom:14px;z-index:4;transform:translateX(-50%);padding:8px 12px;border-radius:999px;background:rgba(19,26,34,.9);border:1px solid var(--line-strong);color:var(--text);font-size:.8rem;font-weight:600;pointer-events:none;animation:dmCoach 1.6s ease-in-out infinite;transition:opacity .35s}
 .dm-coach.gone{opacity:0}
