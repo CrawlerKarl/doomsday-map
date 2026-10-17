@@ -407,7 +407,7 @@
       else if (f.indexOf('tier:') === 0) { var tn = f.slice(5); filt.tiers[tn] = !filt.tiers[tn]; }
       else if (f.indexOf('lane:') === 0) { var ln = f.slice(5); filt.lanes = filt.lanes || {}; filt.lanes[ln] = !filt.lanes[ln]; }
       else filt[f] = !filt[f];
-      saveFilt(); var keep = { x: view.x, y: view.y, k: view.k }; render(false); if (mode === 'map') { view = keep; applyView(); } return;
+      saveFilt(); applyFilters(f); return;
     }
     if ((el = t.closest('[data-dm-rowopen]'))) { if (t.closest('.dm-tgl')) return; select(el.dataset.dmRowopen); return; }
     if ((el = t.closest('[data-dm-toggle]'))) { var n = byId(el.dataset.dmToggle); haptic(); post('/api/map/seen', { id: n.id, seen: !n.seen }).then(function () { return reload(true); }); return; }
@@ -420,15 +420,83 @@
     }
   }
 
+  // ---- filter changes animate in place (no full re-render): chip pops, nodes sweep in left→right, hidden ones shrink away
+  var hideTimer = null;
+  function popChip(bar, f) {
+    var c = f && bar.querySelector('[data-dmf="' + f + '"]'); if (!c) return;
+    c.classList.remove('pop'); void c.offsetWidth; c.classList.add('pop');
+    setTimeout(function () { c.classList.remove('pop'); }, 650);
+  }
+  function applyFilters(f) {
+    var bar = root.querySelector('.dm-bar');
+    if (bar) {
+      var rows = bar.querySelectorAll('.dm-filters'), sl = [].map.call(rows, function (r) { return r.scrollLeft; });
+      bar.innerHTML = modeHtml() + filtersHtml();
+      var rows2 = bar.querySelectorAll('.dm-filters'); for (var i = 0; i < rows2.length; i++) rows2[i].scrollLeft = sl[i] || 0;
+      popChip(bar, f);
+    }
+    if (mode !== 'map') { var w = root.querySelector('.dm-listwrap'); if (w) { w.outerHTML = listHtml(); staggerRows(); } return; }
+    animateVisibility();
+  }
+  function staggerRows() {
+    var rows = root.querySelectorAll('.dm-row');
+    for (var i = 0; i < rows.length; i++) { rows[i].style.setProperty('--d', Math.min(i * 26, 420) + 'ms'); rows[i].classList.add('dm-in'); }
+  }
+  function animateVisibility() {
+    var s = svgEl(); if (!s) return;
+    var vis = {}, shown = [];
+    data.nodes.forEach(function (n) { vis[n.id] = passes(n); if (vis[n.id]) shown.push(n); });
+    var minX = Infinity, maxX = -Infinity;
+    shown.forEach(function (n) { if (n.x < minX) minX = n.x; if (n.x > maxX) maxX = n.x; });
+    var span = Math.max(1, maxX - minX), delayOf = function (n) { return Math.round(40 + (n.x - minX) / span * 380) + 'ms'; };
+    var finish = function (el) { el.classList.remove('dm-in', 'dm-out'); };
+    data.nodes.forEach(function (n) {
+      var g = s.querySelector('[data-node="' + n.id + '"]'); if (!g) return;
+      var was = !g.classList.contains('off') && !g.classList.contains('dm-out');
+      if (vis[n.id] && !was) { finish(g); g.classList.remove('off'); g.style.setProperty('--d', delayOf(n)); void g.getBoundingClientRect(); g.classList.add('dm-in'); }
+      else if (!vis[n.id] && was) { finish(g); g.classList.add('dm-out'); }
+    });
+    var edges = s.querySelectorAll('.dm-edge[data-for]');
+    for (var i = 0; i < edges.length; i++) {
+      var e = edges[i], n = byId(e.dataset.for), v = n ? vis[n.id] : true, wasE = !e.classList.contains('off') && !e.classList.contains('dm-out');
+      if (v && !wasE) { finish(e); e.classList.remove('off'); e.style.setProperty('--d', n ? delayOf(n) : '0ms'); void e.getBoundingClientRect(); e.classList.add('dm-in'); }
+      else if (!v && wasE) { finish(e); e.classList.add('dm-out'); }
+    }
+    // chronology lines depend on which neighbours are visible: fade the old set out, draw the new set in
+    var olds = s.querySelectorAll('.dm-chain:not(.dm-out)');
+    for (var j = 0; j < olds.length; j++) { olds[j].classList.remove('dm-in'); olds[j].classList.add('dm-out'); }
+    var ch = '';
+    data.lanes.forEach(function (l) {
+      var arr = shown.filter(function (n) { return n.lane === l.id && n.id !== 'doomsday' && n.id !== 'secretwars'; }).sort(function (a, b) { return a.x - b.x; });
+      for (var k = 1; k < arr.length; k++) ch += '<line class="dm-chain dm-in" style="--d:' + delayOf(arr[k]) + '" x1="' + arr[k - 1].x + '" y1="' + arr[k - 1].y + '" x2="' + arr[k].x + '" y2="' + arr[k].y + '"/>';
+    });
+    var anchor = s.querySelector('.dm-edge') || s.querySelector('.dm-node');
+    if (ch && anchor) { var tmp = document.createElementNS('http://www.w3.org/2000/svg', 'g'); tmp.innerHTML = ch; while (tmp.firstChild) s.insertBefore(tmp.firstChild, anchor); }
+    clearTimeout(hideTimer);
+    hideTimer = setTimeout(function () {
+      var outs = s.querySelectorAll('.dm-out'); for (var a = 0; a < outs.length; a++) { if (outs[a].classList.contains('dm-chain')) outs[a].remove(); else { outs[a].classList.remove('dm-out'); outs[a].classList.add('off'); } }
+      var ins = s.querySelectorAll('.dm-in'); for (var b = 0; b < ins.length; b++) ins[b].classList.remove('dm-in');
+    }, 900);
+    lastNs = -1; applyView();  // labels re-flow for the new set
+    updateCount(true);
+  }
+  function updateCount(bump) {
+    var el = root.querySelector('.dm-count'); if (!el) return;
+    var shown = data.nodes.filter(passes).length, total = data.nodes.length, filtered = anyFilter();
+    el.innerHTML = filtered ? '<b>' + shown + '</b> of ' + total + ' titles' : '<b>' + total + '</b> titles';
+    el.classList.toggle('filtered', filtered);
+    if (bump) { el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); }
+  }
+
   function render(fitView) {
     var body = mode === 'map'
       ? '<div class="dm-stage" data-dm-stage="1">' + svg() +
-        '<div class="dm-ctl"><button data-dm-zoom="1" aria-label="Zoom in">+</button><button data-dm-zoom="-1" aria-label="Zoom out">−</button><button data-dm-fit="1" aria-label="Fit">⤢</button><button data-dm-goto="doomsday" title="Jump to Doomsday">🎯</button></div></div>'
+        '<div class="dm-ctl"><button data-dm-zoom="1" aria-label="Zoom in">+</button><button data-dm-zoom="-1" aria-label="Zoom out">−</button><button data-dm-fit="1" aria-label="Fit">⤢</button><button data-dm-goto="doomsday" title="Jump to Doomsday">🎯</button></div><div class="dm-count" aria-live="polite"></div></div>'
       : listHtml();
     root.innerHTML = '<div class="dm-top"><div><h2 class="dm-h">Avengers: Doomsday — prep</h2><p class="muted small">Dec 18, 2026 · ' + (mode === 'map' ? 'drag to pan · pinch, scroll or double-tap to zoom · tap a title' : 'tap a title for why it matters · ✓ seen · ★ queue it for before the movie') + '</p></div>' + stats() + '</div>' +
       '<div class="dm-bar">' + modeHtml() + filtersHtml() + '</div>' + (mode === 'map' ? legend() : '') +
       body + '<p class="dm-note muted small">' + esc(data.note || '') + '</p>';
-    if (mode === 'map') { lastNs = -1; if (fitView !== false) fit(false); else applyView(); }
+    if (mode === 'map') { lastNs = -1; if (fitView !== false) fit(false); else applyView(); updateCount(false); } else staggerRows();
   }
 
   window.Doomsday = {

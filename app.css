@@ -44,6 +44,11 @@ a.btn{text-decoration:none;display:inline-flex;align-items:center}
 .fchip{min-height:42px;padding:0 14px;border-radius:999px;border:1px solid var(--line-strong);background:var(--surface);color:var(--text);font-size:.9rem;font-weight:600;cursor:pointer;transition:transform .12s,background .15s}
 .fchip.on{background:linear-gradient(180deg,#ffd75e,var(--accent-deep));color:var(--accent-ink);border-color:transparent;box-shadow:0 6px 14px rgba(243,185,22,.25)}
 .fchip:active{transform:scale(.96)}
+.fchip{position:relative}
+.fchip.pop{animation:chipPop .45s cubic-bezier(.2,.8,.2,1)}
+.fchip.pop::after{content:"";position:absolute;inset:-3px;border-radius:inherit;border:2px solid rgba(255,204,51,.85);animation:chipRing .55s ease-out both;pointer-events:none}
+@keyframes chipPop{0%{transform:scale(.92)}45%{transform:scale(1.08)}100%{transform:scale(1)}}
+@keyframes chipRing{from{opacity:.9;transform:scale(1)}to{opacity:0;transform:scale(1.4)}}
 :focus-visible{outline:2px solid rgba(255,204,51,.8);outline-offset:2px}
 button:focus:not(:focus-visible){outline:0}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}

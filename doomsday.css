@@ -163,3 +163,23 @@ details.dm-cat[open] summary::after{content:" ▾"}
 .z0 .dm-edge.background{opacity:.18}
 .z0 .dm-lane-note{display:none}
 .dm-lane{font-size:calc(14px * var(--inv))}
+
+/* ---- filter motion: chips pop, nodes sweep in toward Doomsday, hidden ones shrink away ---- */
+.dm-node{transform-box:fill-box;transform-origin:center}
+.dm-node.dm-in{animation:dmNodeIn .6s cubic-bezier(.2,.8,.2,1) both;animation-delay:var(--d,0ms)}
+@keyframes dmNodeIn{from{opacity:0;scale:.3}}
+.dm-node.dm-out{animation:dmNodeOut .32s ease-in both;pointer-events:none}
+@keyframes dmNodeOut{to{opacity:0;scale:.45}}
+.dm-edge.dm-in,.dm-chain.dm-in{animation:dmFadeIn .8s ease both;animation-delay:var(--d,0ms)}
+@keyframes dmFadeIn{from{opacity:0}}
+.dm-edge.dm-out,.dm-chain.dm-out{animation:dmFadeOut .3s ease both}
+@keyframes dmFadeOut{to{opacity:0}}
+.dm-count{position:absolute;left:10px;bottom:10px;z-index:3;padding:6px 12px;border-radius:999px;background:rgba(19,26,34,.82);border:1px solid var(--line-strong);backdrop-filter:blur(8px);font-size:.78rem;color:var(--muted);pointer-events:none;white-space:nowrap}
+.dm-count b{color:var(--text);font-size:.92rem}
+.dm-count.filtered{border-color:rgba(255,204,51,.45)}
+.dm-count.filtered b{color:var(--accent)}
+.dm-count.bump{animation:dmCountBump .5s cubic-bezier(.2,.8,.2,1)}
+@keyframes dmCountBump{0%{transform:scale(1)}40%{transform:scale(1.14)}100%{transform:scale(1)}}
+.dm-row.dm-in{animation:dmRowIn .42s cubic-bezier(.2,.8,.2,1) both;animation-delay:var(--d,0ms)}
+@keyframes dmRowIn{from{opacity:0;transform:translateY(10px) scale(.98)}}
+@media(prefers-reduced-motion:reduce){.dm-out{display:none}.dm-node.dm-in,.dm-row.dm-in{animation:none}}
