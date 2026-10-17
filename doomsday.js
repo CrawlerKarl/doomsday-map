@@ -342,7 +342,7 @@
   var pts = {};
   function onPointerDown(ev) {
     var st = stage(); if (!st) return;
-    if (ev.target.closest('.dm-side') || ev.target.closest('.dm-ctl')) return;
+    if (!ev.target.closest('.dm-stage') || ev.target.closest('.dm-side') || ev.target.closest('.dm-ctl')) return;  // only the map itself pans
     try { st.setPointerCapture && st.setPointerCapture(ev.pointerId); } catch (e) {}
     pts[ev.pointerId] = { x: ev.clientX, y: ev.clientY };
     if (!dragging) dragging = { id: ev.pointerId, sx: ev.clientX, sy: ev.clientY, vx: view.x, vy: view.y, moved: false, target: ev.target.closest('[data-node]') };
