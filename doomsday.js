@@ -566,7 +566,7 @@
       var rew = el.dataset.sec === 'rewatch', section = rew ? (n2.media_type === 'movie' ? 'rewatch_movies' : 'rewatch_tv') : (n2.media_type === 'movie' ? 'movies_to_watch' : 'to_watch_running');
       el.classList.add('busy'); el.disabled = true;
       post('/api/list/add', { line: n2.title.replace(/ — Season \d+$/, '') + ' {' + n2.key.replace(':', '/') + '}', section: section })
-        .then(function () { el.classList.remove('busy'); el.textContent = rew ? '↻ On your rewatch list · see Next' : '✓ On your list · see Next'; if (window.MyShowsReload) window.MyShowsReload(); return reload(true); })
+        .then(function () { el.classList.remove('busy'); el.textContent = rew ? '↻ On your rewatch list · see Up next' : '✓ On your list · see Up next'; if (window.MyShowsReload) window.MyShowsReload(); return reload(true); })
         .catch(function (e) { el.classList.remove('busy'); el.disabled = false; el.textContent = 'Could not add: ' + e.message; });
       return;
     }
