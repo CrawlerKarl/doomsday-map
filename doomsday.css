@@ -258,3 +258,17 @@ details.dm-cat[open] summary::after{content:" ▾"}
 .dm-acts.panel .dm-tgl{flex:1 1 0;width:auto;max-width:none;height:44px;flex-direction:row;gap:7px}
 .dm-acts.panel .dm-tgl i{font-size:1rem}
 .dm-acts.panel .dm-tgl span{font-size:.72rem;letter-spacing:.02em;text-transform:none;font-weight:700}
+
+/* ---- story lines: solid in the source's tier colour, dotted for plain sequels; selection lights both ends ---- */
+.dm-edge.catalog{stroke:#8a95a3;stroke-opacity:.55;stroke-dasharray:5 6;stroke-width:calc(1.3px * var(--inv))}
+.dm-edge.background{opacity:.75}
+.z0 .dm-edge.catalog{opacity:.3}
+.dm-edge.lit.catalog{stroke:#eef2f6;stroke-opacity:1;stroke-dasharray:none;opacity:1}
+.dm-lg.line b{display:inline-block;width:18px;height:0;border-top:2px solid #9ccaff;vertical-align:middle;margin-right:6px}
+.dm-lg.line.dot b{border-top:2px dotted #8a95a3}
+.dm-chain-rows{display:grid;gap:6px;margin:10px 0 4px;font-size:.86rem}
+.dm-chain-rows>div{display:flex;align-items:center;flex-wrap:wrap;gap:6px}
+.dm-chain-rows .k{color:var(--muted);font-size:.74rem;text-transform:uppercase;letter-spacing:.08em;margin-right:4px}
+.dm-link{min-height:30px;padding:0 11px;border-radius:999px;border:1px solid var(--line-strong);background:var(--surface-3);color:var(--text);font-size:.8rem;font-weight:700;cursor:pointer}
+.dm-link.essential,.dm-link.target{border-color:rgba(255,204,51,.55);color:#ffe28a}
+.dm-link.recommended{border-color:rgba(90,169,255,.55);color:#9ccaff}

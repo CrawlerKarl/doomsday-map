@@ -124,6 +124,21 @@
       ' C' + (fx + 150) + ',' + fy + ' ' + (t.x - 180) + ',' + t.y + ' ' + (t.x - t.r - 2) + ',' + t.y;
   }
 
+  var EDGE_ORDER = { catalog: 0, future: 0, background: 1, recommended: 2, essential: 3, target: 4 };
+  function edgeVisible(a, b) { return passes(a) && passes(b); }
+  function linkPath(a, b) {  // a smooth hand-off from one chapter to the next
+    var dx = Math.max(60, b.x - a.x);
+    return 'M' + a.x + ',' + a.y + ' C' + (a.x + dx * 0.5) + ',' + a.y + ' ' + (b.x - dx * 0.5) + ',' + b.y + ' ' + (b.x - b.r - 2) + ',' + b.y;
+  }
+  function edgeHtml(n, tt) {
+    var cls = n.id === 'doomsday' ? 'future' : n.tier, d;
+    if (tt.id === 'doomsday') d = edgePath(n, tt);
+    else if (n.id === 'doomsday') d = 'M' + (n.x + n.r) + ',' + n.y + ' Q' + ((n.x + tt.x) / 2) + ',' + tt.y + ' ' + (tt.x - tt.r) + ',' + tt.y;
+    else d = linkPath(n, tt);
+    var stroke = (cls === 'essential' || cls === 'recommended' || cls === 'background') ? ' stroke="url(#edge-' + cls + ')"' : '';
+    return '<path class="dm-edge ' + cls + (edgeVisible(n, tt) ? '' : ' off') + '" data-from="' + n.id + '" data-to="' + tt.id + '" d="' + d + '" fill="none"' + stroke + '/>';
+  }
+
   // ---- svg ------------------------------------------------------------------
   function svg() {
     layout();
@@ -140,17 +155,10 @@
     var seed = 7; for (var i = 0; i < 160; i++) { seed = (seed * 9301 + 49297) % 233280; var sx = seed / 233280 * W; seed = (seed * 9301 + 49297) % 233280; var sy = seed / 233280 * H; seed = (seed * 9301 + 49297) % 233280; h += '<circle cx="' + sx.toFixed(0) + '" cy="' + sy.toFixed(0) + '" r="' + (0.6 + seed / 233280 * 1.6).toFixed(1) + '" fill="#fff" opacity="' + (0.15 + seed / 233280 * 0.5).toFixed(2) + '"/>'; }
     for (var y = 1998; y <= 2027; y += (y < 2008 ? 5 : 1)) { var ax = xOf(y + '-01-01'); h += '<line x1="' + ax + '" y1="' + (TOP + 30) + '" x2="' + ax + '" y2="' + (H - 40) + '" class="dm-grid"/><text x="' + ax + '" y="' + (H - 18) + '" class="dm-year' + (y >= 2009 && y % 2 ? ' alt' : '') + '" text-anchor="middle">' + y + '</text>'; }
     data.lanes.forEach(function (l) { var ly = laneY[l.id]; h += '<line x1="' + LEFT + '" y1="' + ly + '" x2="' + (W - RIGHT) + '" y2="' + ly + '" class="dm-lanel"/><text x="' + (LEFT - 14) + '" y="' + (ly - 6) + '" class="dm-lane" text-anchor="end">' + esc(LANE_SHORT[l.id] || l.label) + '</text><text x="' + (LEFT - 14) + '" y="' + (ly + 14) + '" class="dm-lane-note" text-anchor="end">' + esc(l.note) + '</text>'; });
-    // edges, background first so the important ones draw on top
-    data.lanes.forEach(function (l) {  // chronology within each lane for the rest of the catalogue
-      var arr = data.nodes.filter(function (n) { return n.lane === l.id && passes(n) && n.id !== 'doomsday' && n.id !== 'secretwars'; }).sort(function (a, b) { return a.x - b.x; });
-      for (var i = 1; i < arr.length; i++) h += '<line class="dm-chain" x1="' + arr[i - 1].x + '" y1="' + arr[i - 1].y + '" x2="' + arr[i].x + '" y2="' + arr[i].y + '"/>';
+    // edges = each title's `leads` (what it leads INTO), drawn least important first so the Doomsday thread sits on top
+    data.nodes.slice().sort(function (a, b) { return (EDGE_ORDER[a.tier] || 0) - (EDGE_ORDER[b.tier] || 0); }).forEach(function (n) {
+      (n.leads || []).forEach(function (tid) { var tt = byId(tid); if (tt) h += edgeHtml(n, tt); });
     });
-    var order = { background: 0, recommended: 1, essential: 2 };
-    if (t) data.nodes.slice().sort(function (a, b) { return (order[a.tier] || 0) - (order[b.tier] || 0); }).forEach(function (n) {
-      if (n.id === 'doomsday' || n.tier === 'future' || n.tier === 'catalog') return;
-      h += '<path class="dm-edge ' + n.tier + (passes(n) ? '' : ' off') + '" data-for="' + n.id + '" d="' + edgePath(n, t) + '" fill="none" stroke="url(#edge-' + n.tier + ')"/>';
-    });
-    var sw = byId('secretwars'); if (t && sw) h += '<path class="dm-edge future" d="M' + (t.x + t.r) + ',' + t.y + ' Q' + ((t.x + sw.x) / 2) + ',' + sw.y + ' ' + (sw.x - sw.r) + ',' + sw.y + '" fill="none"/>';
     data.nodes.forEach(function (n) {
       var cls = 'dm-node ' + n.tier + (n.seen ? ' seen' : '') + (n.queued ? ' queued' : '') + (selected === n.id ? ' on' : '') + (passes(n) ? '' : ' off') + (n.crowded ? ' crowded' : '');
       h += '<g class="' + cls + '" data-node="' + n.id + '" transform="translate(' + n.x + ',' + n.y + ')"><g class="dm-s" transform="scale(' + curNs.toFixed(4) + ')">';
@@ -172,7 +180,7 @@
   // ---- chrome ---------------------------------------------------------------
   function legend() {
     var tiers = ['target', 'essential', 'recommended', 'background', 'catalog', 'future'];
-    return '<div class="dm-legend">' + tiers.map(function (k) { var t = data.tiers[k]; return '<span class="dm-lg ' + k + '"><i></i>' + esc(t.label) + '</span>'; }).join('') + '<span class="dm-lg seen"><i>✓</i>seen (dimmed poster)</span><span class="dm-lg queued"><i>★</i>in your queue</span></div>';
+    return '<div class="dm-legend">' + tiers.map(function (k) { var t = data.tiers[k]; return '<span class="dm-lg ' + k + '"><i></i>' + esc(t.label) + '</span>'; }).join('') + '<span class="dm-lg seen"><i>✓</i>seen (dimmed poster)</span><span class="dm-lg queued"><i>★</i>in your queue</span><span class="dm-lg line"><b></b>leads into</span><span class="dm-lg line dot"><b></b>plain sequel</span></div>';
   }
   function stats() {
     var s = data.stats || {};
@@ -242,6 +250,17 @@
     if (hid.length) h += '<details class="dm-cat dm-hiddenlist"><summary class="dm-lh">⊘ Not interested <span>' + hid.length + ' hidden · tap to show</span></summary><div class="dm-list">' + hid.map(function (n) { return listRow(n, true); }).join('') + '</div></details>';
     return '<div class="dm-listwrap">' + h + '</div>';
   }
+  function listActionHtml(n) {  // tracker only: put the title on the owner's list so it shows up on Tonight
+    if (!n.on_your_list) return '<button class="btn primary" data-dm-add="' + n.id + '" data-sec="towatch">+ Add to my list</button>';
+    if (n.list_bucket === 'seen' && !n.list_rewatch) return '<span class="badge soft">on your list · watched</span><button class="btn" data-dm-add="' + n.id + '" data-sec="rewatch">↻ Add to my rewatch list</button>';
+    return '<span class="badge soft">on your list · ' + esc(n.list_rewatch ? 'rewatch' : (n.list_bucket || '').replace('_', ' ')) + '</span>';
+  }
+  function chainHtml(n) {  // the picture's lines, as words: what this leads into and what it follows
+    var chip = function (id) { var m = byId(id); return m ? '<button class="dm-link ' + m.tier + '" data-dm-goto="' + m.id + '">' + esc(SHORT[m.id] || m.title) + '</button>' : ''; };
+    var out = (n.leads || []).map(chip).join(''), inn = (n.follows || []).map(chip).join('');
+    if (!out && !inn) return '';
+    return '<div class="dm-chain-rows">' + (out ? '<div><span class="k">Leads into</span>' + out + '</div>' : '') + (inn ? '<div><span class="k">Follows</span>' + inn + '</div>' : '') + '</div>';
+  }
   function panel(n) {
     var tier = data.tiers[n.tier] || {}, isTarget = n.tier === 'target' || n.tier === 'future';
     var pills = (n.services || []).length ? n.services.map(function (s) { return s.url ? '<a class="pill ' + esc(s.id) + '" href="' + esc(s.url) + '" target="_blank" rel="noopener">' + esc(s.label) + ' ↗</a>' : '<span class="pill ' + esc(s.id) + '">' + esc(s.label) + '</span>'; }).join('') : '<span class="pill none">not on your services</span>';
@@ -252,11 +271,12 @@
       (isTarget ? '' : '<div><span class="k">You</span>' + seenPill(n) + (n.queued ? '<span class="dm-tier q">★ queued' + (n.seen ? ' for a rewatch' : '') + '</span>' : '') + (n.hidden ? '<span class="dm-tier hid">⊘ not interested</span>' : '') + '</div>') +
       (!isTarget && n.seen && (n.tier === 'essential' || n.tier === 'recommended') && !n.queued ? '<div class="dm-hint">You\'ve seen this and it matters — ★ queue it if you want a refresher before the movie.</div>' : '') +
       (!isTarget && !n.seen && n.tier === 'essential' && !n.queued ? '<div class="dm-hint">Not seen yet and it\'s a must-watch — ★ queue it.</div>' : '') + '</div>' +
+      chainHtml(n) +
       '<p class="dm-why"><b>Why it matters:</b> ' + esc(n.why) + '</p>' +
       (n.overview ? '<p class="dm-ov">' + esc(n.overview) + '</p>' : '') +
       '<div class="pills">' + pills + '</div>' +
       '<div class="acts">' +
-        (isTarget || STATIC ? '' : (n.on_your_list ? '<span class="badge soft">on your list · ' + esc((n.list_bucket || '').replace('_', ' ')) + '</span>' : '<button class="btn" data-dm-add="' + n.id + '">Add to my list</button>')) +
+        (isTarget || STATIC ? '' : listActionHtml(n)) +
         '<a class="btn" href="' + esc(n.tmdb_url) + '" target="_blank" rel="noopener">TMDB ↗</a></div></div>';
   }
 
@@ -418,7 +438,7 @@
     root.querySelectorAll('.dm-edge.lit').forEach(function (p) { p.classList.remove('lit'); });
     if (!n) { side.classList.remove('open'); setTimeout(function () { if (!side.classList.contains('open')) side.innerHTML = ''; }, 250); if (window.MyShowsLock) window.MyShowsLock.unlock(); if (mode === 'map') applyView(); return; }
     var g = root.querySelector('[data-node="' + id + '"]'); if (g) { g.classList.add('on'); g.parentNode.appendChild(g); }
-    var e = root.querySelector('.dm-edge[data-for="' + id + '"]'); if (e) { e.classList.add('lit'); }
+    root.querySelectorAll('.dm-edge[data-from="' + id + '"], .dm-edge[data-to="' + id + '"]').forEach(function (p) { p.classList.add('lit'); p.parentNode.insertBefore(p, g || null); });
     side.innerHTML = panel(n); side.classList.add('open'); if (window.MyShowsLock && innerWidth < 760) window.MyShowsLock.lock(); if (mode === 'map') applyView(); haptic();
   }
 
@@ -513,7 +533,7 @@
     var t = ev.target, el;
     if ((el = t.closest('[data-dm-zoom]'))) { var r = stageRect(); zoomAt(el.dataset.dmZoom === '1' ? 1.5 : 1 / 1.5, r.width / 2, r.height / 2, true); return; }
     if (t.closest('[data-dm-fit]')) { fit(true); return; }
-    if ((el = t.closest('[data-dm-goto]'))) { goTo(el.dataset.dmGoto); select(el.dataset.dmGoto); return; }
+    if ((el = t.closest('[data-dm-goto]'))) { if (mode === 'map') goTo(el.dataset.dmGoto); select(el.dataset.dmGoto); return; }
     if (t.closest('[data-dm-close]')) { select(null); return; }
     if ((el = t.closest('[data-dm-mode]'))) {
       if (el.dataset.dmMode === mode) return;
@@ -543,8 +563,11 @@
     }
     if ((el = t.closest('[data-dm-add]'))) {
       var n2 = byId(el.dataset.dmAdd); haptic();
-      post('/api/list/add', { line: n2.title.replace(/ — Season \d+$/, '') + ' {' + n2.key.replace(':', '/') + '}', section: n2.media_type === 'movie' ? 'movies_to_watch' : 'to_watch_running' })
-        .then(function () { el.textContent = 'Added ✓'; el.disabled = true; if (window.MyShowsReload) window.MyShowsReload(); });
+      var rew = el.dataset.sec === 'rewatch', section = rew ? (n2.media_type === 'movie' ? 'rewatch_movies' : 'rewatch_tv') : (n2.media_type === 'movie' ? 'movies_to_watch' : 'to_watch_running');
+      el.classList.add('busy'); el.disabled = true;
+      post('/api/list/add', { line: n2.title.replace(/ — Season \d+$/, '') + ' {' + n2.key.replace(':', '/') + '}', section: section })
+        .then(function () { el.classList.remove('busy'); el.textContent = rew ? '↻ On your rewatch list · see Tonight' : '✓ On your list · see Tonight'; if (window.MyShowsReload) window.MyShowsReload(); return reload(true); })
+        .catch(function (e) { el.classList.remove('busy'); el.disabled = false; el.textContent = 'Could not add: ' + e.message; });
       return;
     }
   }
@@ -588,11 +611,10 @@
     var s = svgEl(); if (!s) return;
     var shown = data.nodes.filter(passes), delayOf = delayFn(shown);
     shown.forEach(function (n) {
-      var g = s.querySelector('[data-node="' + n.id + '"]'), e = s.querySelector('.dm-edge[data-for="' + n.id + '"]');
+      var g = s.querySelector('[data-node="' + n.id + '"]'), es = s.querySelectorAll('.dm-edge[data-from="' + n.id + '"]');
       if (g) { g.style.setProperty('--d', delayOf(n)); g.classList.add('dm-in'); }
-      if (e && !e.classList.contains('off')) { e.style.setProperty('--d', delayOf(n)); e.classList.add('dm-in'); }
+      for (var q = 0; q < es.length; q++) if (!es[q].classList.contains('off')) { es[q].style.setProperty('--d', delayOf(n)); es[q].classList.add('dm-in'); }
     });
-    var ch = s.querySelectorAll('.dm-chain'); for (var i = 0; i < ch.length; i++) { ch[i].style.setProperty('--d', delayOf(+ch[i].getAttribute('x2'))); ch[i].classList.add('dm-in'); }
     clearMotionLater(s);
   }
   function animateVisibility() {
@@ -607,22 +629,12 @@
       if (vis[n.id] && !was) { finish(g); g.classList.remove('off'); g.style.setProperty('--d', delayOf(n)); void g.getBoundingClientRect(); g.classList.add('dm-in'); }
       else if (!vis[n.id] && was) { finish(g); g.classList.add('dm-out'); }
     });
-    var edges = s.querySelectorAll('.dm-edge[data-for]');
+    var edges = s.querySelectorAll('.dm-edge[data-from]');
     for (var i = 0; i < edges.length; i++) {
-      var e = edges[i], n = byId(e.dataset.for), v = n ? vis[n.id] : true, wasE = !e.classList.contains('off') && !e.classList.contains('dm-out');
+      var e = edges[i], n = byId(e.dataset.from), v = !!(n && vis[n.id] && vis[e.dataset.to]), wasE = !e.classList.contains('off') && !e.classList.contains('dm-out');
       if (v && !wasE) { finish(e); e.classList.remove('off'); e.style.setProperty('--d', n ? delayOf(n) : '0ms'); void e.getBoundingClientRect(); e.classList.add('dm-in'); }
       else if (!v && wasE) { finish(e); e.classList.add('dm-out'); }
     }
-    // chronology lines depend on which neighbours are visible: fade the old set out, draw the new set in
-    var olds = s.querySelectorAll('.dm-chain:not(.dm-out)');
-    for (var j = 0; j < olds.length; j++) { olds[j].classList.remove('dm-in'); olds[j].classList.add('dm-out'); }
-    var ch = '';
-    data.lanes.forEach(function (l) {
-      var arr = shown.filter(function (n) { return n.lane === l.id && n.id !== 'doomsday' && n.id !== 'secretwars'; }).sort(function (a, b) { return a.x - b.x; });
-      for (var k = 1; k < arr.length; k++) ch += '<line class="dm-chain dm-in" style="--d:' + delayOf(arr[k]) + '" x1="' + arr[k - 1].x + '" y1="' + arr[k - 1].y + '" x2="' + arr[k].x + '" y2="' + arr[k].y + '"/>';
-    });
-    var anchor = s.querySelector('.dm-edge') || s.querySelector('.dm-node');
-    if (ch && anchor) { var tmp = document.createElementNS('http://www.w3.org/2000/svg', 'g'); tmp.innerHTML = ch; while (tmp.firstChild) s.insertBefore(tmp.firstChild, anchor); }
     clearMotionLater(s);
     lastNs = -1; applyView();  // labels re-flow for the new set
     updateCount(true);
@@ -649,6 +661,7 @@
   }
 
   window.Doomsday = {
+    close: function () { if (selected) select(null); },  // the tracker calls this when you leave the Doomsday tab
     mount: function (el) {
       root = el;
       root.addEventListener('pointerdown', onPointerDown); root.addEventListener('pointermove', onPointerMove);
